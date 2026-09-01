@@ -12,9 +12,10 @@ battery holder" placeholders in the released BOM.
 |---|---|---|---|---|---|---|
 | U1 | USB-C PD sink trigger | `CH224K` | WCH | SSOP-10-1EP 3.9×4.9 | ✅ active | stock symbol + footprint |
 | U2 | 1S charger + NVDC power path | `BQ25895RTW` | Texas Instruments | WQFN-24-1EP 4×4 | ✅ active | stock symbol + `Texas_RTW_WQFN-24-1EP_4x4mm_..._ThermalVias` |
-| U3 | 5 V buck-boost | `TPS63070RNMR` | Texas Instruments | VQFN-HR-15 (RNM) 2.5×3 | ✅ active, 11.9k stock Digi-Key | **symbol + footprint both custom** |
+| U3 | 5 V buck-boost | `TPS630701RNMR` | Texas Instruments | VQFN-HR-15 (RNM) 2.5×3 | ✅ active, stocked | **symbol + footprint both custom**. Fixed-5 V variant — see [D6](DECISIONS.md#d6--tps630701-fixed-5-v-replaces-the-tps63070-adjustable) |
 | U4 | Fuel gauge | `MAX17048G+T10` | Analog Devices | TDFN-8-EP 2×2 | ✅ active | **symbol custom**; footprint from stock DFN-8 2×2 family, EP to be matched |
-| U5 | 1S protection | ⬜ | — | — | open, see D6 | — |
+| U5 | 1S protection | `BQ29700DSE` | Texas Instruments | WSON-6 1.5×1.5 | ✅ selected | symbol custom. OVP 4.275 V / UVP 2.800 V — see [D7](DECISIONS.md#d7--battery-protection-bq29700-with-low-rdson-fets) |
+| Q1 | Protection FETs | ⬜ | — | common-drain dual | ⛔ **≤ 8.3 mΩ at VGS 3.4 V** — AO8810 and FS8205A ruled out | — |
 
 The two custom symbols and one custom footprint (TPS63070) are the whole custom-part
 burden. Everything else is stock or a generic passive.
@@ -51,6 +52,7 @@ layout.
 
 | Ref | Value | Why it is safety-critical |
 |---|---|---|
+| `R_CFG1` | **6.8 kΩ**, 1%, 0603 | Selects the 9 V PD request on the CH224K. **Open or missing requests 20 V**, which exceeds the BQ25895's 14 V operating maximum and halts charging. **Do not DNP.** |
 | `RILIM` | **680 Ω**, 1%, 0603 | Sets the BQ25895 hardware input-current clamp that keeps charge current under the cell's 1.7 A limit when no host is present. Derived in [DECISIONS.md D5](DECISIONS.md#d5--the-charge-current-ceiling-is-enforced-in-hardware-by-the-ilim-resistor). **Do not substitute, value-engineer, or mark DNP.** |
 
 ## Still to select

@@ -198,23 +198,78 @@ low is the safe direction here, and reduces charge current rather than raising i
 
 ---
 
-## D6 — Still open
+## D6 — TPS630701 (fixed 5 V) replaces the TPS63070 (adjustable)
 
-Items that will become decisions during Stage B.
+**Spec said:** §5.1 — "Texas Instruments TPS63070 buck-boost converter. Configure for
+output: 5.0 V."
 
-- **CH224K VDD supply.** The part's VDD sits around 3.3 V. Whether it is fed from VBUS
-  through a series resistor relying on an internal regulator, or needs a discrete LDO,
-  must be read off the WCH datasheet rather than inferred from the many trigger-board
-  schematics floating around.
-- **Board-level 1S protection.** Spec §15 requires a dedicated protection stage unless the
-  BQ25895 plus the cell's own protection covers everything. The installed M35A is a bare
-  cell with no PCB, and the holder accepts any 18650 the user fits — so the working
-  assumption is that a discrete protection IC **is** required. This is the largest
-  remaining open question in the power path.
-- **NTC network values.** The BQ25895 `TS` thresholds must be sized so the charge window
-  matches the M35A's permitted charging temperature range, not the charger's defaults.
-- **TPS63070 feedback divider and inductor.** Both follow from TI's reference layout once
-  the 5 V rail's transient budget is fixed.
+**Decision:** use **`TPS630701RNMR`**, the fixed 5.0 V member of the same family. Same
+VQFN-HR-15 (RNM) 2.5 × 3 mm package, same reference layout, same passives, active and
+stocked at Digi-Key.
 
-*(The BQ25895 watchdog and default-register question that sat here has been resolved — see
-D5.)*
+**Reasoning:** the board only ever needs 5.0 V, so the adjustable part's feedback divider
+is pure liability. Removing it removes two resistors, a ±1% accuracy stack-up, and — the
+reason that actually matters — **a failure mode in which a wrong, damaged, or
+mis-assembled divider resistor puts an out-of-spec voltage directly onto the ESP32's 5 V
+pin.** On fixed versions the FB pin ties straight to VOUT and no such failure exists.
+
+This is the same principle as [D5](#d5--the-charge-current-ceiling-is-enforced-in-hardware-by-the-ilim-resistor):
+prefer the variant whose failure modes are structurally absent over the one that needs a
+component to be correct.
+
+Values in [POWER_DESIGN.md §3](POWER_DESIGN.md#3-5-v-rail--tps630701-changed-from-tps63070).
+
+---
+
+## D7 — Battery protection: BQ29700 with low-RDS(on) FETs
+
+**Spec said:** §15 — "If the BQ25895 and selected cell protection do not provide all
+required battery protections, add a dedicated 1S protection stage."
+
+**Decision: the protection stage is required.** The installed M35A is a **bare cell with
+no protection PCB**, and the holder accepts whatever 18650 a user fits. The BQ25895
+provides charge-side protection but is not an independent second layer — if the charger
+itself faults, nothing else stands between the cell and the system.
+
+**Selected:** TI **`BQ29700DSE`** (WSON-6, 1.5 × 1.5 mm) driving two low-side N-FETs in
+the cell's negative path. OVP 4.275 V, UVP 2.800 V, OCD 100 mV, SCC 500 mV.
+
+OVP at 4.275 V sits deliberately above the BQ25895's 4.208 V charge target, so the
+protector is a genuine backstop rather than a part that fights the charger.
+
+### The finding worth carrying forward
+
+**OCD is sensed as a voltage across the FETs**, so the overcurrent trip point is set
+entirely by their on-resistance: `I_trip = 100 mV / (2 × RDS(on))`.
+
+Working the arithmetic for this board's ~3.55 A peak cell current rules out **both** parts
+that battery-protection reference designs default to:
+
+| Part | RDS(on) | Trip current | |
+|---|---|---|---|
+| AO8810 | 23 mΩ | ≈ 2.2 A | ❌ below our own transient |
+| FS8205A | 25 mΩ | ≈ 2.0 A | ❌ worse |
+
+Either would nuisance-trip on WiFi transients and look like random brownouts.
+
+**Requirement: ≤ 8.3 mΩ per FET — measured at VGS = 3.4 V**, which is the BQ29700's actual
+`VOH` gate drive, *not* the 4.5 V or 10 V at which FET datasheets headline their RDS(on).
+Reading the headline figure instead of the curve at the real gate voltage is exactly how
+this circuit gets built wrong.
+
+⬜ Final FET part pending that check — see
+[POWER_DESIGN.md §4](POWER_DESIGN.md#4-battery-protection--bq29700--external-fets).
+
+---
+
+## D8 — Still open
+
+- ⬜ **CH224K VDD and VBUS series resistor values** — topology is confirmed (internal
+  high-voltage LDO, series R from VBUS, 1 µF decoupling; no external LDO needed), but the
+  exact resistor values must come from the manual's reference schematic figures.
+- ⬜ **Protection FET part number**, verified at VGS = 3.4 V — see D7.
+- ⬜ **VBUS TVS and CC-line ESD array.**
+- ⬜ **5 V load switch** implementing SW1 per spec §13.
+- ⬜ **M35A charging temperature window** — the TS network currently assumes the standard
+  0–45 °C Li-ion range. Confirmation only; the assumed window is the conservative one, so
+  the error direction is safe.

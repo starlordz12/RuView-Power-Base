@@ -74,15 +74,22 @@ marked DNP, and the BOM must say so.
 
 ## Open engineering questions
 
-Carried from [DECISIONS.md](DECISIONS.md#d6--still-open):
+Most of this list is now closed — resolved values live in
+[POWER_DESIGN.md](POWER_DESIGN.md). Remaining, carried from
+[DECISIONS.md D8](DECISIONS.md#d8--still-open):
 
-- CH224K VDD supply topology — resistor from VBUS or a discrete LDO?
-- Whether a discrete 1S protection IC is required. Working assumption: **yes** — the
-  installed M35A is a bare cell with no protection PCB, and the holder accepts whatever
-  18650 the user fits.
-- NTC network values, sized to the M35A's permitted charging temperature window rather
-  than the charger's defaults.
-- TPS63070 feedback divider and inductor, from TI's reference layout.
+| Item | State |
+|---|---|
+| CH224K VDD supply topology | ✅ internal HV LDO, series R from VBUS + 1 µF. No external LDO. |
+| PD voltage selection | ✅ `R_CFG1 = 6.8 kΩ` to GND → 9 V. Safety-critical. |
+| BQ25895 NTC/TS network | ✅ 103AT + `RT1 = 5.23 kΩ`, `RT2 = 30.1 kΩ` for 0–45 °C |
+| TPS63070 feedback divider | ✅ eliminated — switched to fixed-5 V `TPS630701RNMR` (D6) |
+| Buck-boost inductor | ✅ 1.5 µH, Coilcraft `XFL4020-152ME` |
+| 1S protection required? | ✅ yes — `BQ29700DSE` selected (D7) |
+| ⬜ Protection FET part | open — needs ≤ 8.3 mΩ **at VGS = 3.4 V**; AO8810 and FS8205A ruled out |
+| ⬜ CH224K series resistor values | open — from the manual's reference schematic |
+| ⬜ VBUS TVS and CC ESD array | open |
+| ⬜ 5 V load switch for SW1 | open |
 
 ## Quality gate before order
 
@@ -96,3 +103,4 @@ there and will be tracked here once Stage B begins.
 | 2026-08-31 | Project created. Board identity corrected to YD-ESP32-S3 V1.3 (D1). Architecture trimmed: CH224K replaces STUSB4500 (D2), PCA9633 dropped (D3). KiCad 10.0.6 installed. Four critical actives validated with exact MPNs; USB-C, sockets and holder selected. Board size estimated ~90 × 60 mm. |
 | 2026-08-31 | Vendor drawing read: YD board is 27.94 × 57.15 mm, rows 25.40 mm, antenna overhangs pin-1 edge by 6.24 mm; all 44 pins confirmed identical to official DevKitC-1. GPIO map proposed on J1 only (G3 closed). Cell marking found to match neither P30B nor M35A — charge policy split to 2.0 A hardware / 1.0 A firmware default (D4). |
 | 2026-08-31 | Cell confirmed as Molicel INR-18650-M35A: max charge 1.7 A, so the spec's 2.0 A target was unsafe (D4). Found that BQ25895 `ICHG` defaults to 2048 mA and is watchdog-reset while `IINLIM` is not — a removable ESP32 leaves the cell charging over its limit. Fixed in hardware with a 680 Ohm ILIM resistor, relying on `EN_ILIM` defaulting to Enable (D5). Samsung 35E evaluated, no change warranted. |
+| 2026-08-31 | Worked D6's open list. Resolved: CH224K VDD topology and the 6.8k CFG1 resistor for 9 V (and that an open CFG1 requests 20 V — survivable at 22 V abs max, caught by the existing §37 PD test); BQ25895 TS network from TI's own 0–45 °C worked example; switched to fixed-5 V TPS630701 to delete the feedback divider as a failure mode (D6); selected BQ29700DSE protection (D7). Found that AO8810 and FS8205A, the default protection FETs, would trip at ~2 A against our 3.55 A transient. |

@@ -86,15 +86,43 @@ V1.3 header map — gate item G1.
 
 ---
 
-## D4 — Charge current defaults to 2.0 A, firmware-selectable to 1.0 A
+## D4 — Hardware built for 2.0 A; firmware defaults to 1.0 A until the cell is identified
 
-**Spec said:** §30.1 — 2.0 A nominal, 1.0 A selectable, 3.0 A only after thermal
-validation. Adopted as written.
+**Spec said:** §30.1 — 2.0 A nominal charging target, 1.0 A firmware-selectable, 3.0 A
+only after thermal validation, on the assumption the cell is a Molicel INR-18650-P30B.
 
-**Note carried forward:** §30.1 also requires the exact Molicel model be confirmed
-against the printed cell marking before release, not from the informal description. The
-P30B figures quoted in the spec (3 A standard charge, 9 A max) are *not* to be treated as
-confirmed. Gate item G2.
+**Problem: the cell marking does not match the P30B.** The user's cell reads
+`molicel 096 2p310 03 ccc 3000 mah 10amp max 18650`. Against Molicel's catalogue:
+
+| Candidate | Capacity | Discharge | **Max charge** |
+|---|---|---|---|
+| INR-18650-P30B | 3000 mAh | 30 A | **9 A** |
+| INR-18650-M35A | 3500 mAh | **10 A** | **1.7 A** |
+| **User's cell** | **3000 mAh** | **10 A** | **unknown** |
+
+The capacity matches the P30B; the current figure matches the M35A. It matches neither
+cleanly. `2p310` is not a Molicel model designation and reads as a lot code; `ccc` is the
+China Compulsory Certification mark.
+
+**Why this is not a minor ambiguity:** the two candidate families differ by **5×** in
+permitted charge current. If the cell is M35A-class, its 1.7 A maximum is **below** the
+spec's 2.0 A target — the spec-default configuration would overcharge it. "10 A max" on a
+wrap is a *discharge* rating and says nothing about charge current; the two are unrelated
+and must not be conflated.
+
+**Decision:**
+
+- **PCB copper and thermal design target 2.0 A**, per spec §4.2 — "The PCB copper and
+  thermal design should support at least 2 A charging even if firmware defaults lower."
+- **Firmware default is 1.0 A**, spec §4.2's own "universal prototype" figure, which is
+  safe for every candidate above.
+- 2.0 A is enabled only once the cell is positively identified as permitting it.
+
+This costs nothing. The board is identical either way, so the ambiguity does **not** block
+layout — it blocks only the firmware default constant and the release gate. Gate item G2.
+
+**Still wanted:** a model designation (something of the form `INR-18650-xxxx`) from the
+cell wrap or its packaging, or a photograph of the cell.
 
 ---
 

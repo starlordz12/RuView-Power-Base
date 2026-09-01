@@ -1,10 +1,10 @@
 # Status
 
-**Current position:** Stage A (validate) — part selection largely done, mechanical
-verification blocked.
+**Current position:** Stage A (validate) — complete except for two physical checks that do
+not block schematic work.
 
-**Next action:** obtain the YD-ESP32-S3 mechanical drawing and confirm it against the
-user's physical V1.3 board (gate item G1).
+**Next action:** Stage B — draw the seven schematic sheets, starting with the CH224K PD
+input and the BQ25895 charger/power-path, both against vendor reference designs.
 
 **Do not order. Nothing here has passed ERC, DRC, or a gerber inspection.**
 
@@ -32,34 +32,31 @@ user's physical V1.3 board (gate item G1).
 
 ## Blocking gate items
 
-### G1 — YD-ESP32-S3 V1.3 mechanical and header map ⛔ blocking
+### G1 — YD-ESP32-S3 V1.3 mechanical and header map 🟡 resolved on paper, caliper check owed
 
-Everything downstream of placement depends on this: socket row spacing, board outline,
-antenna keepout position, and every GPIO assignment.
+Vendor drawing and schematic obtained and read. Board geometry and the full 44-pin map are
+recorded in [MECHANICAL.md](MECHANICAL.md) and confirmed self-consistent: **27.94 × 57.15 mm,
+rows 25.40 mm apart, 22 pins at 2.54 mm, antenna overhangs the pin-1 edge by 6.24 mm.**
+The pinout is **identical to the official Espressif DevKitC-1**.
 
-The vendor publishes `ESP32-S3-Metric.pdf` (116 KB) and `YD-ESP32-S3-SCH-V1.4.pdf`
-(429 KB) in [vcc-gnd/YD-ESP32-S3](https://github.com/vcc-gnd/YD-ESP32-S3). **The
-schematic is V1.4 and the user's board is V1.3** — the vendor README states authentic
-boards are V1.4 and that clones copy V1.2, so V1.3 is undocumented territory.
+Remaining: three caliper measurements on the user's physical V1.3 board, because V1.3 sits
+between the vendor's "counterfeit V1.2" and "authentic V1.4" and is not itself documented.
+The user has calipers and has agreed. **Not blocking schematic work; blocking before layout
+is committed.**
 
-Required before layout is committed:
+### G2 — Cell identity does not match the spec's assumption ⛔ blocks charge configuration
 
-1. Fetch the vendor mechanical drawing and schematic. *(awaiting download approval)*
-2. Physically measure the user's board: socket row spacing centre-to-centre, overall
-   length and width, and the distance from the pin-1 end to the antenna edge.
-3. Reconcile measurement against the drawing. If they disagree, the physical board wins.
+The cell marking matches neither the P30B nor the M35A cleanly, and the two differ by 5× in
+permitted charge current. Resolved for now by building the hardware for 2.0 A and defaulting
+the firmware to 1.0 A — see [D4](DECISIONS.md#d4--hardware-built-for-20a-firmware-defaults-to-10a-until-the-cell-is-identified).
 
-### G2 — Molicel cell model unconfirmed ⛔ blocks charge configuration
+**Does not block layout.** Blocks the firmware default constant and the release gate.
 
-Spec §30.1 explicitly forbids finalising charger settings from the informal cell
-description. The printed model number on the user's actual cell must be read and checked
-against the current Molicel datasheet before the 2.0 A charge target is accepted.
+### G3 — GPIO assignment ✅ resolved
 
-### G3 — GPIO assignment ⛔ blocked by G1
-
-Five LEDs, one button, and I2C need pins that avoid strapping (GPIO0/3/45/46), PSRAM
-(GPIO35/36/37), native USB (GPIO19/20), UART0 (GPIO43/44) and the onboard RGB (GPIO48),
-and that RuView does not claim.
+Proposed map in [MECHANICAL.md](MECHANICAL.md#proposed-carrier-gpio-assignment). All carrier
+signals land on J1, leaving J2 entirely free for RuView. I2C on the ESP32-S3 default pair
+(GPIO8/9). No strapping, PSRAM, USB, UART or RGB pins used.
 
 ## Open engineering questions
 
@@ -82,3 +79,4 @@ there and will be tracked here once Stage B begins.
 | Date | What happened |
 |---|---|
 | 2026-08-31 | Project created. Board identity corrected to YD-ESP32-S3 V1.3 (D1). Architecture trimmed: CH224K replaces STUSB4500 (D2), PCA9633 dropped (D3). KiCad 10.0.6 installed. Four critical actives validated with exact MPNs; USB-C, sockets and holder selected. Board size estimated ~90 × 60 mm. |
+| 2026-08-31 | Vendor drawing read: YD board is 27.94 × 57.15 mm, rows 25.40 mm, antenna overhangs pin-1 edge by 6.24 mm; all 44 pins confirmed identical to official DevKitC-1. GPIO map proposed on J1 only (G3 closed). Cell marking found to match neither P30B nor M35A — charge policy split to 2.0 A hardware / 1.0 A firmware default (D4). |

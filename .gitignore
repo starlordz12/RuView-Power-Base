@@ -20,3 +20,6 @@ Desktop.ini
 # Vendor reference PDFs are fetched, not committed, unless licensing is clear
 hardware/mechanical/esp32-yd-reference/*.pdf
 hardware/mechanical/esp32-yd-reference/*.PcbDoc
+
+# Renders derived from vendor reference PDFs
+hardware/mechanical/esp32-yd-reference/*.png

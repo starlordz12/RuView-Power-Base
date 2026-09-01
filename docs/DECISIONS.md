@@ -257,19 +257,104 @@ Either would nuisance-trip on WiFi transients and look like random brownouts.
 Reading the headline figure instead of the curve at the real gate voltage is exactly how
 this circuit gets built wrong.
 
-⬜ Final FET part pending that check — see
-[POWER_DESIGN.md §4](POWER_DESIGN.md#4-battery-protection--bq29700--external-fets).
+**Resolved:** TI's own layout example (SLUSBU9 Figure 32) pairs the BQ29700 with **two
+discrete `CSD16406Q3` singles**, not a common-drain dual — which is why searching the dual
+category kept coming up short. At **7.4 mΩ max (VGS 4.5 V)** two in series give an OCD trip
+of **≈ 6.8 A**, and TI's own design table claims 7 A with this exact combination. Comfortably
+above our 3.55 A transient, comfortably below the cell's 10 A rating.
+
+⬜ Still to confirm at schematic: RDS(on) read off the curve at **VGS ≈ 3.0 V** (the gate
+drive at a low cell), not the headline 4.5 V figure.
 
 ---
 
-## D8 — Still open
+## D8 — The VBUS TVS is 12 V, not the 24 V a PD board suggests
 
-- ⬜ **CH224K VDD and VBUS series resistor values** — topology is confirmed (internal
-  high-voltage LDO, series R from VBUS, 1 µF decoupling; no external LDO needed), but the
-  exact resistor values must come from the manual's reference schematic figures.
-- ⬜ **Protection FET part number**, verified at VGS = 3.4 V — see D7.
-- ⬜ **VBUS TVS and CC-line ESD array.**
-- ⬜ **5 V load switch** implementing SW1 per spec §13.
-- ⬜ **M35A charging temperature window** — the TS network currently assumes the standard
-  0–45 °C Li-ion range. Confirmation only; the assumed window is the conservative one, so
-  the error direction is safe.
+**The obvious choice is wrong.** A USB-C PD board can see 20 V on VBUS, which points
+straight at a 24 V-standoff TVS such as `SMAJ24A`. That part **would protect nothing on
+this board**: its clamping voltage is **38.9 V**, and the BQ25895's absolute maximum is
+**22 V**. The charger dies long before the TVS does anything useful.
+
+**Decision:** size the TVS for the voltage this board actually operates at. It requests
+**9 V and never more**, so `SMAJ12A` — 12 V standoff, 13.3 V breakdown, **19.9 V clamp** —
+stands off 9 V ±5% comfortably while clamping *below* the 22 V the charger must survive.
+
+**What this deliberately does not cover:** the open-`R_CFG1` fault that would request 20 V
+(see [POWER_DESIGN.md §1](POWER_DESIGN.md#voltage-selection--resolved--and-safety-relevant)).
+Covering that would require a standoff above 20 V, which forces the clamp above 22 V and
+abandons protection of the part we are protecting. The two requirements are mutually
+exclusive, so the fault is handled where it belongs: **an open CFG1 is a build defect, and
+spec §37's production test already requires verified 9 V negotiation on every board.**
+
+Choosing the higher-voltage part here would have felt safer and protected less.
+
+---
+
+## D9 — SW1 switches the converter's EN pin; no load-switch IC
+
+**Spec said:** §13 — "OFF disconnects the regulated 5 V rail from the ESP32 ... Avoid
+placing large battery current directly through a tiny slide switch if an electronic load
+switch is more appropriate. Preferred implementation: switch controls EN of the 5 V
+buck-boost or a load-switch IC."
+
+**Decision:** a plain SPDT slide switch (`EG1218`) drives the **TPS630701 `EN` pin**
+directly. No load-switch IC.
+
+**Why this is sufficient rather than a shortcut:**
+
+- The switch carries **only EN-pin current — microamps.** The spec's concern about routing
+  battery current through a small slide switch does not arise.
+- The TPS63070 family **disconnects the load from the input in shutdown** (SLVSC58B §1),
+  so EN-low is a true disconnect, not merely a converter stop with a leakage path.
+- It is the first of the two implementations the spec itself names as preferred.
+
+Removes an IC, its passives, and its footprint. The `EG1218` is rated 200 mA / 30 V, which
+is orders of magnitude beyond what it will ever carry here.
+
+---
+
+## D10 — NTC mounting is a documented compromise
+
+**Spec said:** §4.3 — "add provision for a 10 kΩ NTC thermistor **touching or adjacent to**
+the 18650 cell ... design the NTC so it measures the cell body rather than just PCB ambient
+temperature."
+
+**The conflict:** §31 requires **full turnkey assembly with no customer soldering**. A
+leaded thermistor bent up against a cell body cannot be placed reliably by an automated
+line, and asking PCBWay to hand-form and position one against a removable cell is not a
+process that repeats across a build.
+
+**Decision:** 0603 SMD NTC on the top layer, positioned **directly beneath the cell body**
+between the holder's contacts, with:
+
+- a local copper island coupling it to the cell side of the board,
+- deliberate thermal isolation from the power side (the charger and both converters sit at
+  the opposite end of the board by §33 zoning),
+- no ground-pour connection that would tie it to the board's thermal mass.
+
+**Stated honestly: this measures cell-adjacent PCB temperature, not the cell body.** It
+will track cell temperature with a lag and an offset, and it is a weaker measurement than
+the spec asks for. It is chosen because the alternative conflicts with a hard requirement,
+not because it is equivalent.
+
+**Consequence for the test plan:** the NTC's actual correlation to cell temperature must be
+characterised during the §16 thermal tests — measuring both the NTC reading and the cell
+surface with a separate probe during a full charge — rather than assumed. If the offset is
+large enough to matter, the TS divider gets re-tuned to compensate.
+
+---
+
+## D11 — Still open
+
+- ⬜ **CH224K VDD and VBUS series resistor values.** Topology confirmed (internal
+  high-voltage LDO, series R from VBUS, 1 µF decoupling; no external LDO). Exact values
+  must come from the manual's reference schematic figures §6.1–6.3.
+- ⬜ **CC1/CC2 ESD array final MPN.** Semtech `µClamp2411ZA` selected on the strength of
+  Semtech's own USB Type-C ESD application note; availability and an LCSC-sourceable
+  equivalent still to confirm.
+- ⬜ **L1 saturation current** — must be ≥ 4 A, since the charger inductor carries system
+  current as well as charge current.
+- ⬜ **SW2 tactile height variant** — depends on the enclosure, which is not yet designed.
+- ⬜ **Status LED colour suffix** — trivial, at BOM freeze.
+- ⬜ **M35A charging temperature window** versus the assumed 0–45 °C. Confirmation only;
+  the assumed window is the conservative one.

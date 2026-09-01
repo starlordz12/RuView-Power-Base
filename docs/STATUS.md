@@ -1,10 +1,10 @@
 # Status
 
-**Current position:** Stage A (validate) — complete except for two physical checks that do
-not block schematic work.
+**Current position:** Stage A complete. Every fitted part has an exact MPN; no generic
+placeholders remain, satisfying spec §39's first BOM condition.
 
-**Next action:** Stage B — draw the seven schematic sheets, starting with the CH224K PD
-input and the BQ25895 charger/power-path, both against vendor reference designs.
+**Next action:** Stage B — build the three custom KiCad symbols (TPS630701, MAX17048,
+BQ29700) and the VQFN-HR-15 footprint, then draw the seven schematic sheets.
 
 **Do not order. Nothing here has passed ERC, DRC, or a gerber inspection.**
 
@@ -14,7 +14,7 @@ input and the BQ25895 charger/power-path, both against vendor reference designs.
 
 | Stage | What it covers | State |
 |---|---|---|
-| A — Validate | datasheets, part availability, DevKit mechanical truth, GPIO map | **in progress** |
+| A — Validate | datasheets, part availability, DevKit mechanical truth, GPIO map | ✅ **complete** — every fitted part has an MPN |
 | B — Schematic | 7 sheets per spec §24 Stage B | not started |
 | C — ERC | zero unexplained violations | not started |
 | D — PCB | placement, keepout, power routing, planes, thermal vias | not started |
@@ -74,22 +74,20 @@ marked DNP, and the BOM must say so.
 
 ## Open engineering questions
 
-Most of this list is now closed — resolved values live in
-[POWER_DESIGN.md](POWER_DESIGN.md). Remaining, carried from
-[DECISIONS.md D8](DECISIONS.md#d8--still-open):
+All architectural questions are closed. Resolved values live in
+[POWER_DESIGN.md](POWER_DESIGN.md); part numbers in
+[PART_SELECTION.md](PART_SELECTION.md). What remains is confirmation work, not design work
+— carried from [DECISIONS.md D11](DECISIONS.md#d11--still-open):
 
-| Item | State |
+| Item | Nature |
 |---|---|
-| CH224K VDD supply topology | ✅ internal HV LDO, series R from VBUS + 1 µF. No external LDO. |
-| PD voltage selection | ✅ `R_CFG1 = 6.8 kΩ` to GND → 9 V. Safety-critical. |
-| BQ25895 NTC/TS network | ✅ 103AT + `RT1 = 5.23 kΩ`, `RT2 = 30.1 kΩ` for 0–45 °C |
-| TPS63070 feedback divider | ✅ eliminated — switched to fixed-5 V `TPS630701RNMR` (D6) |
-| Buck-boost inductor | ✅ 1.5 µH, Coilcraft `XFL4020-152ME` |
-| 1S protection required? | ✅ yes — `BQ29700DSE` selected (D7) |
-| ⬜ Protection FET part | open — needs ≤ 8.3 mΩ **at VGS = 3.4 V**; AO8810 and FS8205A ruled out |
-| ⬜ CH224K series resistor values | open — from the manual's reference schematic |
-| ⬜ VBUS TVS and CC ESD array | open |
-| ⬜ 5 V load switch for SW1 | open |
+| ⬜ CH224K VDD / VBUS series resistor values | read off the manual's reference figures |
+| ⬜ CSD16406Q3 RDS(on) at VGS ≈ 3.0 V | confirmation — even a pessimistic 10 mΩ still trips at ≈5 A |
+| ⬜ CC1/CC2 ESD array final MPN | availability check |
+| ⬜ L1 saturation ≥ 4 A | datasheet check |
+| ⬜ NTC mounting | layout, per [D10](DECISIONS.md#d10--ntc-mounting-is-a-documented-compromise) |
+| ⬜ SW2 height variant, status LED colour | trivial, at layout / BOM freeze |
+| ⬜ M35A charging temperature window | confirmation; assumed 0–45 °C is the conservative choice |
 
 ## Quality gate before order
 
@@ -104,3 +102,4 @@ there and will be tracked here once Stage B begins.
 | 2026-08-31 | Vendor drawing read: YD board is 27.94 × 57.15 mm, rows 25.40 mm, antenna overhangs pin-1 edge by 6.24 mm; all 44 pins confirmed identical to official DevKitC-1. GPIO map proposed on J1 only (G3 closed). Cell marking found to match neither P30B nor M35A — charge policy split to 2.0 A hardware / 1.0 A firmware default (D4). |
 | 2026-08-31 | Cell confirmed as Molicel INR-18650-M35A: max charge 1.7 A, so the spec's 2.0 A target was unsafe (D4). Found that BQ25895 `ICHG` defaults to 2048 mA and is watchdog-reset while `IINLIM` is not — a removable ESP32 leaves the cell charging over its limit. Fixed in hardware with a 680 Ohm ILIM resistor, relying on `EN_ILIM` defaulting to Enable (D5). Samsung 35E evaluated, no change warranted. |
 | 2026-08-31 | Worked D6's open list. Resolved: CH224K VDD topology and the 6.8k CFG1 resistor for 9 V (and that an open CFG1 requests 20 V — survivable at 22 V abs max, caught by the existing §37 PD test); BQ25895 TS network from TI's own 0–45 °C worked example; switched to fixed-5 V TPS630701 to delete the feedback divider as a failure mode (D6); selected BQ29700DSE protection (D7). Found that AO8810 and FS8205A, the default protection FETs, would trip at ~2 A against our 3.55 A transient. |
+| 2026-08-31 | Completed part selection — every fitted part now has an MPN. Protection FETs resolved to 2x TI CSD16406Q3 after finding the common-drain dual category tops out around 23 mOhm; TI's own layout example uses discrete singles and hits 7 A on the same threshold. TVS sized at 12 V not 24 V, because a 24 V part clamps at 38.9 V and would not protect a 22 V-max charger (D8). SW1 drives the converter EN pin, deleting the load-switch IC (D9). NTC mounting recorded as an honest compromise against the turnkey requirement (D10). |

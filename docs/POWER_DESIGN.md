@@ -82,8 +82,13 @@ TS thresholds are ratiometric to REGN: `VLTF` 73.25%, `VHTF` 48.25%, `VTCO` 44.7
 
 0–45 °C is the standard Li-ion charging window and the conservative choice. If the M35A
 datasheet permits a wider range, we have simply been cautious — the error direction is
-safe. Per spec §16 and §6, the thermistor must sit against the **cell body**, not read
-PCB ambient.
+safe.
+
+Spec §4.3 wants the thermistor measuring the **cell body** rather than PCB ambient. That
+conflicts with the §31 full-turnkey requirement, and the compromise actually being built —
+an 0603 NTC directly beneath the cell, thermally isolated from the power side — is recorded
+honestly in [D10](DECISIONS.md#d10--ntc-mounting-is-a-documented-compromise), including the
+thermal-test characterisation it obliges.
 
 ### Required decoupling ✅ resolved
 
@@ -178,18 +183,44 @@ Our worst-case legitimate discharge, which must **not** trip:
 
 | Candidate | RDS(on) | Resulting trip | Verdict |
 |---|---|---|---|
-| AO8810 | 23 mΩ @ VGS 2.5 V | **≈ 2.2 A** | ❌ nuisance-trips on WiFi transients |
-| FS8205A | 25 mΩ @ VGS 4.5 V | **≈ 2.0 A** | ❌ same, worse |
-| AON7534 (×2, singles) | 8.5 mΩ @ VGS 4.5 V | ≈ 5.9 A | 🟡 viable, needs VGS derating check |
+| AO8810 (dual) | 23 mΩ @ VGS 2.5 V | ≈ 2.2 A | ❌ below our own transient |
+| AO8816 (dual) | 23 mΩ @ VGS 2.5 V | ≈ 2.2 A | ❌ same — the whole TSSOP-8 family sits at 18–32 mΩ |
+| FS8205A (dual) | 25 mΩ @ VGS 4.5 V | ≈ 2.0 A | ❌ worse |
+| **CSD16406Q3 ×2 (singles)** | **7.4 mΩ max @ VGS 4.5 V** | **≈ 6.8 A** | ✅ **selected** |
 
-⬜ **Open.** Final FET selection needs a common-drain dual (or two singles) at **≤ 8.3 mΩ
-measured at the gate drive the BQ29700 actually delivers** — `VOH` is only **3.4–3.7 V**
-(SLUSBU9 §7.5), *not* the 4.5 V or 10 V at which datasheets headline their RDS(on). The
-RDS(on)-vs-VGS curve must be read at 3.4 V, and the number will be worse than the headline.
+### Resolved — and the search was looking in the wrong place
+
+Hunting for a low-RDS(on) *common-drain dual* was the wrong approach: no readily available
+TSSOP-8 dual gets near 8 mΩ. **TI's own layout example (SLUSBU9 Figure 32) uses two
+discrete `CSD16406Q3` singles**, and TI's design table (§11.2.1) claims **7 A maximum
+operating discharge current** with exactly this combination and the same 100 mV threshold.
+
+A "common-drain dual" is only two singles sharing a package — the topology is identical.
+Drains tie together, sources go to B− and PACK−, gates to DSG and CHG.
+
+| | |
+|---|---|
+| Part | `CSD16406Q3`, TI NexFET, 25 V, SON 3.3 × 3.3 mm, **ACTIVE** |
+| RDS(on) | 7.4 mΩ max @ VGS 4.5 V · 5.3 mΩ max @ VGS 10 V · 4.2 mΩ typ |
+| Two in series | ≈ 14.8 mΩ → **OCD trips ≈ 6.8 A** |
+| Margin | 1.9× above our 3.55 A transient; well below the cell's 10 A rating |
+
+⬜ **One check remains:** the BQ29700 drives the gate to roughly VBAT, so VGS falls to about
+**3.0 V at a depleted cell** — below the 4.5 V at which that 7.4 mΩ is specified. The
+RDS(on)-vs-VGS curve must be read at 3.0 V and the trip recomputed. Even at a pessimistic
+10 mΩ each the trip is ≈ 5 A, still above our transient, so this is a confirmation rather
+than a risk.
 
 Reading RDS(on) at the headline VGS instead of the actual gate drive is precisely how this
-circuit gets designed wrong, and it is why the AO8810 appears acceptable until the
-arithmetic is done.
+circuit gets built wrong — and it is why the AO8810 looks acceptable until the arithmetic
+is done.
+
+### Layout requirements (SLUSBU9 §13.1)
+
+1. The connection **between the two FETs must be very short** — extra drop there corrupts
+   the fault sensing that sets the trip point.
+2. FETs need adequate thermal spreading for worst-case power.
+3. The BAT-terminal RC filter (0.1 µF / 2.2 kΩ) sits close to the IC.
 
 ---
 
@@ -198,7 +229,8 @@ arithmetic is done.
 | Item | Blocking |
 |---|---|
 | ⬜ CH224K VDD and VBUS series resistor values | schematic |
-| ⬜ Protection FET part, verified at VGS = 3.4 V | schematic |
-| ⬜ VBUS TVS and CC-line ESD parts | schematic |
-| ⬜ 5 V load switch for SW1 | schematic |
-| ⬜ M35A charging temperature window vs the assumed 0–45 °C | confirmation only — current choice is the conservative one |
+| ⬜ CSD16406Q3 RDS(on) confirmed at VGS ≈ 3.0 V | schematic — confirmation, not risk |
+| ⬜ CC1/CC2 ESD array final MPN | schematic |
+| ⬜ L1 saturation current ≥ 4 A | schematic |
+| ⬜ NTC mounting method | layout — see [D10](DECISIONS.md#d10--ntc-mounting-is-a-documented-compromise) |
+| ⬜ M35A charging temperature window vs the assumed 0–45 °C | confirmation only; current choice is conservative |

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate hardware/lib/RuView.kicad_sym.
 
-Three parts KiCad does not ship. Pin data is transcribed from the vendor
+The parts KiCad does not ship. Pin data is transcribed from the vendor
 datasheets cited against each part; do not edit the generated library by hand,
 edit this file and re-run it.
 
@@ -18,35 +18,6 @@ LIB_VERSION = "20251024"
 # Pin tables. (number, name, electrical_type, side)
 # side: L=left  R=right  T=top  B=bottom
 # ---------------------------------------------------------------------------
-
-TPS630701 = dict(
-    name="TPS630701RNMR",
-    ref="U",
-    value="TPS630701RNMR",
-    footprint="RuView:Texas_RNM_VQFN-HR-15_2.5x3mm_P0.5mm",
-    datasheet="https://www.ti.com/lit/ds/symlink/tps63070.pdf",
-    description="Buck-boost converter, fixed 5.0 V output, 2 A, VQFN-HR-15",
-    keywords="buck-boost fixed 5V regulator TI",
-    fp_filters="*VQFN-HR*15*2.5x3mm*",
-    # SLVSC58B section 6, Pin Configuration and Functions
-    pins=[
-        ("12", "VIN", "power_in", "L"),
-        ("13", "VIN", "power_in", "L"),
-        ("14", "EN", "input", "L"),
-        ("1", "PS/SYNC", "input", "L"),
-        ("15", "VSEL", "input", "L"),
-        ("11", "L1", "passive", "L"),
-        ("9", "L2", "passive", "R"),
-        ("7", "VOUT", "power_out", "R"),
-        ("8", "VOUT", "power_out", "R"),
-        ("5", "FB", "input", "R"),
-        ("6", "FB2", "output", "R"),
-        ("2", "PG", "open_collector", "R"),
-        ("3", "VAUX", "passive", "R"),
-        ("4", "GND", "power_in", "B"),
-        ("10", "PGND", "power_in", "B"),
-    ],
-)
 
 MAX17048 = dict(
     name="MAX17048",
@@ -94,7 +65,7 @@ AP9214L = dict(
     ],
 )
 
-PARTS = [TPS630701, MAX17048, AP9214L]
+PARTS = [MAX17048, AP9214L]
 
 GRID = 2.54
 PIN_LEN = 2.54

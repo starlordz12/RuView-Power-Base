@@ -121,38 +121,42 @@ Straight from the SLUSC88C pin descriptions — these are not optional:
 
 ---
 
-## 3. 5 V rail — TPS630701 (changed from TPS63070)
+## 3. 5 V rail — TPS63061 (changed from TPS63070)
 
-### Part change ✅ resolved
+**`TPS63061`** — fixed 5.0 V, 2.5–12 V input, S-PWSON-10. **KiCad ships both the symbol and
+`Package_SON:Texas_S-PWSON-N10_ThermalVias`.**
 
-**Use `TPS630701RNMR` — the fixed 5.0 V variant** — instead of the adjustable TPS63070
-the spec named. Same VQFN-HR-15 (RNM) 2.5 × 3 mm package, same reference layout, active
-and stocked at Digi-Key.
+Chosen over the spec's TPS63070 for two reasons: the fixed output deletes the feedback
+divider and its failure mode, and the TPS63070's HotRod VQFN-HR-15 land pattern (L-shaped
+pads, mixed solder-mask definitions) is not shipped by KiCad and would have had to be
+hand-built for a turnkey order. Full reasoning and the capability trade in
+[D6](DECISIONS.md#d6--tps63061-fixed-5-v-son-10-replaces-the-tps63070).
 
-| Device | Output | Output discharge |
+### Available output current — always boost on this board
+
+TI quotes 2 A in buck and **1.3 A in boost**. The cell is 3.0–4.2 V into a 5 V rail, so
+**boost always applies.** From TI Equation 2, `IOUT = η × ISW × (1 − D)`:
+
+| Cell | Duty | At 5 V |
 |---|---|---|
-| TPS63070 | adjustable 2.5–9 V | off |
-| **TPS630701** | **fixed 5.0 V** | off |
-| TPS630702 | adjustable | on |
+| 3.0 V | 0.40 | **1.08 A** |
+| 3.6 V | 0.28 | **1.30 A** |
+| 4.2 V | 0.16 | **1.51 A** |
 
-Why: the board only ever needs 5.0 V. The fixed variant removes the feedback divider,
-which removes two resistors, a ±1% accuracy stack-up, and — the real reason — **a failure
-mode where a wrong or damaged divider resistor puts an out-of-spec voltage onto the
-ESP32's 5 V pin.** For fixed versions the FB pin connects directly to VOUT.
+Spec §22's 1.0 A continuous is met at every cell voltage. Its ~2 A transient aspiration is
+not; the node draws ~0.7 A, leaving ~1.5× at worst case.
 
-*(Retained for reference: the adjustable part would need R1 = 680 kΩ, R2 = 130 kΩ for
-5.0 V, from SLVSC58B Table 4, with VFB = 800 mV.)*
-
-### Passives ✅ resolved — from TI's reference BOM (SLVSC58B Table 2)
+### Passives (TPS6306x datasheet §9.2.2)
 
 | Item | Value |
 |---|---|
-| **L** | **1.5 µH** — Coilcraft `XFL4020-152MEC` |
-| CIN | 2 × 10 µF / 25 V / X7S / 0805 |
-| COUT | 3 × 22 µF / 16 V / X6S / 0805 |
-| VIN local | 10 µF / 25 V / X5R / 0603 |
+| **L** | **1.0 µH** — Coilcraft `XFL4020-102ME`, TI Table 9-3 (5.1 A ISAT, 10.8 mΩ) |
+| COUT | **66 µF** (3 × 22 µF) — TI's "typical application" pairing with 1.0 µH |
+| CIN | **≥ 20 µF** ceramic, close to VIN/PGND |
+| FB | tie directly to VOUT (fixed version) |
 
-25 V input capacitors also cover the 20 V CFG1 failure mode above.
+Pinout (stock symbol): 1 L1 · 2 VIN · 3 EN · 4 PS/SYNC · 5 PG · 6 VAUX · 7 GND · 8 FB ·
+9 VOUT · 10 L2 · 11 PGND (exposed pad).
 
 ---
 

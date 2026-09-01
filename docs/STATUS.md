@@ -1,10 +1,17 @@
 # Status
 
-**Current position:** Stage A complete. Every fitted part has an exact MPN; no generic
-placeholders remain, satisfying spec §39's first BOM condition.
+**Current position:** Stage A complete. Stage B in progress — custom library parts built
+and verified; schematic sheets not yet drawn.
 
-**Next action:** Stage B — build the three custom KiCad symbols (TPS630701, MAX17048,
-BQ29700) and the VQFN-HR-15 footprint, then draw the seven schematic sheets.
+**Next action:** build the **AP9214L U-DFN2535-6 footprint** (the only remaining custom
+footprint), then draw the seven schematic sheets starting with 01_USB_C_PD and
+02_CHARGER_POWER_PATH.
+
+⚠ **Before building that footprint:** the AP9214L datasheet's Package Outline and Suggested
+Pad Layout drawings imply *different* orientations for pin 1 — the wide lead (b2 = 1.10 mm)
+sits bottom-left in the outline but the wide pad (X1 = 1.20 mm) is top-left in the pad
+layout. **Resolve which pad is pin 1 before drawing anything.** A wrong pin-1 here means
+the protection FETs are backwards and the board is scrap.
 
 **Do not order. Nothing here has passed ERC, DRC, or a gerber inspection.**
 
@@ -15,7 +22,7 @@ BQ29700) and the VQFN-HR-15 footprint, then draw the seven schematic sheets.
 | Stage | What it covers | State |
 |---|---|---|
 | A — Validate | datasheets, part availability, DevKit mechanical truth, GPIO map | ✅ **complete** — every fitted part has an MPN |
-| B — Schematic | 7 sheets per spec §24 Stage B | not started |
+| B — Schematic | 7 sheets per spec §24 Stage B | **in progress** — library parts done, sheets not started |
 | C — ERC | zero unexplained violations | not started |
 | D — PCB | placement, keepout, power routing, planes, thermal vias | not started |
 | E — DRC | PCBWay-friendly rule set | not started |
@@ -103,3 +110,4 @@ there and will be tracked here once Stage B begins.
 | 2026-08-31 | Cell confirmed as Molicel INR-18650-M35A: max charge 1.7 A, so the spec's 2.0 A target was unsafe (D4). Found that BQ25895 `ICHG` defaults to 2048 mA and is watchdog-reset while `IINLIM` is not — a removable ESP32 leaves the cell charging over its limit. Fixed in hardware with a 680 Ohm ILIM resistor, relying on `EN_ILIM` defaulting to Enable (D5). Samsung 35E evaluated, no change warranted. |
 | 2026-08-31 | Worked D6's open list. Resolved: CH224K VDD topology and the 6.8k CFG1 resistor for 9 V (and that an open CFG1 requests 20 V — survivable at 22 V abs max, caught by the existing §37 PD test); BQ25895 TS network from TI's own 0–45 °C worked example; switched to fixed-5 V TPS630701 to delete the feedback divider as a failure mode (D6); selected BQ29700DSE protection (D7). Found that AO8810 and FS8205A, the default protection FETs, would trip at ~2 A against our 3.55 A transient. |
 | 2026-08-31 | Completed part selection — every fitted part now has an MPN. Protection FETs resolved to 2x TI CSD16406Q3 after finding the common-drain dual category tops out around 23 mOhm; TI's own layout example uses discrete singles and hits 7 A on the same threshold. TVS sized at 12 V not 24 V, because a 24 V part clamps at 38.9 V and would not protect a 22 V-max charger (D8). SW1 drives the converter EN pin, deleting the load-switch IC (D9). NTC mounting recorded as an honest compromise against the turnkey requirement (D10). |
+| 2026-09-01 | Stage B started. Built custom KiCad symbols with a generator (tools/gen_symbols.py) plus tools/check_symbols.py, whose three checks were each watched to FAIL against deliberate controls. MAX17048 pinout taken from the ADI datasheet directly via the browser after fetch tools timed out — the TDFN and WLP pin maps genuinely differ. Switched the 5 V rail from TPS630701 to **TPS63061** (D6): the TPS63070's HotRod VQFN-HR-15 land pattern is not shipped by KiCad and hand-building it for a turnkey order was the design's biggest assembly risk. Costs the ~2 A transient aspiration (1.08–1.51 A available in boost); keeps §22's 1.0 A continuous. That also deleted a custom symbol and the hardest custom footprint. |

@@ -14,12 +14,15 @@ battery holder" placeholders in the released BOM.
 |---|---|---|---|---|---|
 | U1 | USB-C PD sink trigger | `CH224K` | WCH | SSOP-10-1EP 3.9×4.9 | ✅ active · stock KiCad symbol + footprint |
 | U2 | 1S charger + NVDC power path | `BQ25895RTW` | Texas Instruments | WQFN-24-1EP 4×4 | ✅ active · stock symbol + thermal-via footprint |
-| U3 | 5 V buck-boost, **fixed 5 V** | `TPS630701RNMR` | Texas Instruments | VQFN-HR-15 (RNM) 2.5×3 | ✅ active · symbol + footprint custom · [D6](DECISIONS.md#d6--tps630701-fixed-5-v-replaces-the-tps63070-adjustable) |
+| U3 | 5 V buck-boost, **fixed 5 V** | `TPS63061` | Texas Instruments | S-PWSON-10 | ✅ active · **stock symbol + stock thermal-via footprint** · [D6](DECISIONS.md#d6--tps63061-fixed-5-v-son-10-replaces-the-tps63070) |
 | U4 | Fuel gauge | `MAX17048G+T10` | Analog Devices | TDFN-8-EP 2×2 | ✅ active · symbol custom |
 | U5 | 1S battery protection **+ integrated FETs** | `AP9214L` | Diodes Inc | U-DFN2535-6 | ✅ 13.5 mΩ at VDD 3.5 V · symbol custom · [D7](DECISIONS.md#d7--battery-protection-integrated-ap9214l-after-two-wrong-answers) |
 
-Custom-library burden: **symbols** for TPS630701, MAX17048, AP9214L; **footprints** for the
-TPS630701's VQFN-HR-15 and the AP9214L's U-DFN2535-6. Everything else is KiCad stock.
+Custom-library burden is now just **two symbols** (MAX17048, AP9214L) and **one footprint**
+(the AP9214L's U-DFN2535-6). Everything else is KiCad stock.
+
+The TPS630701's HotRod VQFN-HR-15 was the hardest custom part in the design; switching to
+the TPS63061 deleted it — see [D6](DECISIONS.md#d6--tps63061-fixed-5-v-son-10-replaces-the-tps63070).
 
 The AP9214L replaces what would have been a protector plus two discrete FETs — see
 [D7](DECISIONS.md#d7--battery-protection-integrated-ap9214l-after-two-wrong-answers) for why
@@ -55,9 +58,9 @@ fault would mean abandoning protection of the very part we are trying to protect
 | Ref | Function | MPN | Mfr | Value |
 |---|---|---|---|---|
 | L1 | BQ25895 charger inductor | `XFL4020-222MEC` | Coilcraft | 2.2 µH · **8 A** · 23.5 mΩ DCR · LCSC C122469 |
-| L2 | TPS630701 inductor | `XFL4020-152MEC` | Coilcraft | 1.5 µH · TI reference BOM part |
+| L2 | TPS63061 inductor | `XFL4020-102ME` | Coilcraft | **1.0 µH** · 5.1 A ISAT · 10.8 mΩ · TI's recommended part (Table 9-3) |
 
-L2 is TI's own reference-BOM part (SLVSC58B Table 2). L1 is the same family for
+Both are TI-recommended parts from the same Coilcraft family. L1 is sized for
 consistency. The BQ25895 runs at 1.5 MHz and needs saturation ≥ ICHG + ½·I_ripple, with
 system current sharing the same inductor. ✅ **8 A rating confirmed**, double the ≥ 4 A need.
 
@@ -110,7 +113,7 @@ value-engineered, or marked DNP,** and the BOM must say so explicitly.
 | I²C pull-ups ×2 | 4.7 kΩ to 3V3 |
 | AP9214L support | R1 220 Ω · R2 1.0 kΩ · C1 100 nF |
 | BQ25895 decoupling | REGN 4.7 µF/10 V · BAT 10 µF · SYS 20 µF · BTST 0.047 µF |
-| TPS630701 | CIN 2×10 µF/25 V · COUT 3×22 µF/16 V · VIN local 10 µF/25 V |
+| TPS63061 | CIN ≥ 20 µF · COUT 66 µF (3×22 µF) — TI's typical pairing with 1.0 µH · FB tied to VOUT |
 | CH224K | VDD **1 kΩ (1206)** + 1 µF · VBUS **10 kΩ** · PG **10 kΩ** pull-up |
 
 All VBUS-side capacitors are **25 V rated**, which also makes the 20 V CFG1 fault
@@ -150,7 +153,7 @@ the manual's reference schematic) · L1 saturation (8 A, double the need) · pro
 - [XFL4020 series — Coilcraft](https://www.coilcraft.com/getmedia/50632d43-da1b-4cdb-8ab4-3029cab51df3/xfl4020.pdf)
 - [CH224 manual v1F — WCH](https://components101.com/sites/default/files/component_datasheet/WCH_CH224K_ENG.pdf)
 - *(rejected, retained for the reasoning in D7: [BQ29700 SLUSBU9](https://media.digikey.com/pdf/Data%20Sheets/Texas%20Instruments%20PDFs/BQ29700.pdf), [CSD16406Q3](https://www.ti.com/product/CSD16406Q3))*
-- [TPS630701RNMR — Digi-Key](https://www.digikey.com/en/products/detail/texas-instruments/TPS630701RNMR/6175215)
+- [TPS6306x (TPS63061) — TI](https://www.ti.com/lit/ds/symlink/tps63060.pdf)
 - [MAX17048 — Analog Devices](https://www.analog.com/en/products/max17048.html)
 - [USB4085 — GCT](https://gct.co/connector/usb4085)
 - [SSW socket strip — Samtec](https://www.samtec.com/products/ssw-122-02-g-s)

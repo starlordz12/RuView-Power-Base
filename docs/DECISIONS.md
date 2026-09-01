@@ -198,26 +198,70 @@ low is the safe direction here, and reduces charge current rather than raising i
 
 ---
 
-## D6 — TPS630701 (fixed 5 V) replaces the TPS63070 (adjustable)
+## D6 — TPS63061 (fixed 5 V, SON-10) replaces the TPS63070
 
 **Spec said:** §5.1 — "Texas Instruments TPS63070 buck-boost converter. Configure for
-output: 5.0 V."
+output: 5.0 V ... transient capability: design for up to approximately 2 A where
+practical."
 
-**Decision:** use **`TPS630701RNMR`**, the fixed 5.0 V member of the same family. Same
-VQFN-HR-15 (RNM) 2.5 × 3 mm package, same reference layout, same passives, active and
-stocked at Digi-Key.
+**Decision:** use **`TPS63061`** — fixed 5.0 V, 2.5–12 V input, S-PWSON-10.
 
-**Reasoning:** the board only ever needs 5.0 V, so the adjustable part's feedback divider
-is pure liability. Removing it removes two resistors, a ±1% accuracy stack-up, and — the
-reason that actually matters — **a failure mode in which a wrong, damaged, or
-mis-assembled divider resistor puts an out-of-spec voltage directly onto the ESP32's 5 V
-pin.** On fixed versions the FB pin ties straight to VOUT and no such failure exists.
+### Two reasons, and the second is the decisive one
 
-This is the same principle as [D5](#d5--the-charge-current-ceiling-is-enforced-in-hardware-by-the-ilim-resistor):
-prefer the variant whose failure modes are structurally absent over the one that needs a
-component to be correct.
+**1. Fixed output beats adjustable.** The board only ever needs 5.0 V, so the adjustable
+part's feedback divider is pure liability: two resistors, a ±1% stack-up, and a failure
+mode where a wrong, damaged, or mis-assembled divider resistor puts an out-of-spec voltage
+straight onto the ESP32's 5 V pin. On fixed versions FB ties to VOUT and that failure does
+not exist.
 
-Values in [POWER_DESIGN.md §3](POWER_DESIGN.md#3-5-v-rail--tps630701-changed-from-tps63070).
+**2. The TPS63070's package is a TI "HotRod" (VQFN-HR-15) and KiCad does not ship it.**
+Its land pattern (drawing RNM0015A) has **L-shaped and notched pads**, mixed
+non-solder-mask-defined and solder-mask-defined lands, at 0.5 mm pitch. Hand-transcribing
+that from a datasheet drawing, for boards we cannot inspect or rework because they arrive
+assembled, was the single largest manufacturing risk in the design.
+
+**`TPS63061` removes it entirely.** KiCad ships both the symbol *and*
+`Package_SON:Texas_S-PWSON-N10_ThermalVias` — a conventional SON-10 with the thermal vias
+already laid in, the same quality of stock part as the BQ25895's footprint.
+
+### What this costs, stated plainly
+
+TI's front page: "Output current at 5 V (VIN < 10 V): **2 A in buck mode** … (VIN > 4 V):
+**1.3 A in boost mode**." **This board is always in boost** — the cell is 3.0–4.2 V and the
+rail is 5 V — so the boost figure is the one that applies. Working TI's Equation 2
+(`IOUT = η × ISW × (1 − D)`, `D = (VOUT − VIN)/VOUT`) across the cell range:
+
+| Cell voltage | Duty | Available at 5 V |
+|---|---|---|
+| 3.0 V (depleted) | 0.40 | **1.08 A** |
+| 3.6 V (nominal) | 0.28 | **1.30 A** |
+| 4.2 V (full) | 0.16 | **1.51 A** |
+
+- Spec §22's **1.0 A continuous minimum: met**, even at a depleted cell.
+- Spec §22's **~2.0 A transient "where practical": not met.** The TPS63070 would have.
+
+**Why that is an acceptable trade.** The actual load is an ESP32-S3 node drawing roughly
+0.7 A peak at 5 V, so even the worst case leaves ~1.5×. The 2 A figure was headroom for
+accessories that do not exist. Set against it: a hand-built HotRod land pattern on a
+turnkey order, where a footprint error is not a bug to fix but five scrap boards.
+
+Sizing for a capability nothing uses, at the price of the design's biggest assembly risk,
+is the wrong trade.
+
+**If the 2 A is ever needed**, the honest route is TI's official TPS63070 footprint from
+Ultra Librarian or SnapEDA — not a hand-transcribed one.
+
+### Values (SLVSC58B / TPS6306x datasheet §9.2.2)
+
+| Item | Value |
+|---|---|
+| **L** | **1.0 µH** — Coilcraft `XFL4020-102ME`, TI's own recommended part (5.1 A ISAT, 10.8 mΩ) |
+| COUT | **66 µF** (3 × 22 µF) — TI's "typical application" pairing with 1.0 µH |
+| CIN | **≥ 20 µF** ceramic, close to VIN/PGND |
+| FB | tie directly to VOUT (fixed version) |
+
+The part also keeps the property SW1 depends on — **load disconnect during shutdown** — so
+[D9](#d9--sw1-switches-the-converters-en-pin-no-load-switch-ic) still holds.
 
 ---
 
@@ -317,14 +361,14 @@ placing large battery current directly through a tiny slide switch if an electro
 switch is more appropriate. Preferred implementation: switch controls EN of the 5 V
 buck-boost or a load-switch IC."
 
-**Decision:** a plain SPDT slide switch (`EG1218`) drives the **TPS630701 `EN` pin**
+**Decision:** a plain SPDT slide switch (`EG1218`) drives the **TPS63061 `EN` pin**
 directly. No load-switch IC.
 
 **Why this is sufficient rather than a shortcut:**
 
 - The switch carries **only EN-pin current — microamps.** The spec's concern about routing
   battery current through a small slide switch does not arise.
-- The TPS63070 family **disconnects the load from the input in shutdown** (SLVSC58B §1),
+- The TPS6306x family **disconnects the load from the input in shutdown**,
   so EN-low is a true disconnect, not merely a converter stop with a leakage path.
 - It is the first of the two implementations the spec itself names as preferred.
 

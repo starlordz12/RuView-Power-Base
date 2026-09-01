@@ -14,7 +14,7 @@ battery holder" placeholders in the released BOM.
 | U2 | 1S charger + NVDC power path | `BQ25895RTW` | Texas Instruments | WQFN-24-1EP 4×4 | ✅ active | stock symbol + `Texas_RTW_WQFN-24-1EP_4x4mm_..._ThermalVias` |
 | U3 | 5 V buck-boost | `TPS63070RNMR` | Texas Instruments | VQFN-HR-15 (RNM) 2.5×3 | ✅ active, 11.9k stock Digi-Key | **symbol + footprint both custom** |
 | U4 | Fuel gauge | `MAX17048G+T10` | Analog Devices | TDFN-8-EP 2×2 | ✅ active | **symbol custom**; footprint from stock DFN-8 2×2 family, EP to be matched |
-| U5 | 1S protection | ⬜ | — | — | see D5 | — |
+| U5 | 1S protection | ⬜ | — | — | open, see D6 | — |
 
 The two custom symbols and one custom footprint (TPS63070) are the whole custom-part
 burden. Everything else is stock or a generic passive.
@@ -46,6 +46,12 @@ Cell holder ~78.5 mm long, mounted alongside a ~25.4 mm wide DevKit per spec §3
 the carrier near **90 × 60 mm**. That sits inside PCBWay's ≤100 × 100 mm price tier,
 which is the single largest lever on bare-PCB cost. Treat 100 mm as a hard budget in
 layout.
+
+## Safety-critical passives
+
+| Ref | Value | Why it is safety-critical |
+|---|---|---|
+| `RILIM` | **680 Ω**, 1%, 0603 | Sets the BQ25895 hardware input-current clamp that keeps charge current under the cell's 1.7 A limit when no host is present. Derived in [DECISIONS.md D5](DECISIONS.md#d5--the-charge-current-ceiling-is-enforced-in-hardware-by-the-ilim-resistor). **Do not substitute, value-engineer, or mark DNP.** |
 
 ## Still to select
 

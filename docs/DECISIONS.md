@@ -86,58 +86,135 @@ V1.3 header map — gate item G1.
 
 ---
 
-## D4 — Hardware built for 2.0 A; firmware defaults to 1.0 A until the cell is identified
+## D4 — Cell is a Molicel INR-18650-M35A; the spec's 2.0 A target is unsafe for it
 
-**Spec said:** §30.1 — 2.0 A nominal charging target, 1.0 A firmware-selectable, 3.0 A
-only after thermal validation, on the assumption the cell is a Molicel INR-18650-P30B.
+**Spec said:** §30.1 — 2.0 A nominal charging target, on the assumption the cell is a
+Molicel INR-18650-P30B (9 A maximum charge).
 
-**Problem: the cell marking does not match the P30B.** The user's cell reads
-`molicel 096 2p310 03 ccc 3000 mah 10amp max 18650`. Against Molicel's catalogue:
+**Confirmed cell: Molicel INR-18650-M35A, 3.6 V / 3.35 Ah.** Not a P30B.
 
-| Candidate | Capacity | Discharge | **Max charge** |
+| | M35A (installed) | P30B (spec assumed) | Samsung 35E (considered) |
 |---|---|---|---|
-| INR-18650-P30B | 3000 mAh | 30 A | **9 A** |
-| INR-18650-M35A | 3500 mAh | **10 A** | **1.7 A** |
-| **User's cell** | **3000 mAh** | **10 A** | **unknown** |
+| Capacity, minimum | 3350 mAh | 3000 mAh | 3350 mAh |
+| Standard charge | 1.7 A | 3 A | 1.7 A |
+| **Maximum charge** | **1.7 A** | 9 A | **2.0 A** |
+| Continuous discharge | 10 A | 30 A | 8 A |
 
-The capacity matches the P30B; the current figure matches the M35A. It matches neither
-cleanly. `2p310` is not a Molicel model designation and reads as a lot code; `ccc` is the
-China Compulsory Certification mark.
-
-**Why this is not a minor ambiguity:** the two candidate families differ by **5×** in
-permitted charge current. If the cell is M35A-class, its 1.7 A maximum is **below** the
-spec's 2.0 A target — the spec-default configuration would overcharge it. "10 A max" on a
-wrap is a *discharge* rating and says nothing about charge current; the two are unrelated
-and must not be conflated.
+**The spec's 2.0 A target exceeds this cell's 1.7 A maximum by 18%.** Building §30.1 as
+written would have overcharged the installed cell on every single cycle.
 
 **Decision:**
 
-- **PCB copper and thermal design target 2.0 A**, per spec §4.2 — "The PCB copper and
-  thermal design should support at least 2 A charging even if firmware defaults lower."
-- **Firmware default is 1.0 A**, spec §4.2's own "universal prototype" figure, which is
-  safe for every candidate above.
-- 2.0 A is enabled only once the cell is positively identified as permitting it.
+- **Firmware default charge current: 1.0 A** (0.3 C) — roughly a 3.5 h charge.
+- **Firmware maximum: 1.5 A** (0.45 C), 12% below the cell ceiling — roughly 2.5 h.
+- **1.7 A is a hard ceiling that is never exceeded**, sized to the most restrictive cell
+  in the table above rather than to the one currently installed.
+- **PCB copper and thermal design still target 2.0 A**, per spec §4.2 — the headroom is
+  free and the spec asks for it.
 
-This costs nothing. The board is identical either way, so the ambiguity does **not** block
-layout — it blocks only the firmware default constant and the release gate. Gate item G2.
+**Why the ceiling tracks the most restrictive cell, not the installed one:** the cell is
+**user-removable**. The board cannot know what is in it. A Samsung 35E may be fitted later,
+or something lower-rated — designing protection around whichever cell happened to ship
+first is how a safety margin quietly disappears. Sizing for 1.7 A keeps the board safe for
+the M35A, the 35E, and any quality 3500 mAh 18650 in this class.
 
-**Still wanted:** a model designation (something of the form `INR-18650-xxxx`) from the
-cell wrap or its packaging, or a photograph of the cell.
+The Samsung 35E was evaluated as an alternative and offers no reason to switch: identical
+standard charge current, 0.3 A more maximum-charge headroom that this design deliberately
+will not use, and a *lower* continuous discharge rating that is irrelevant at this node's
+sub-1 A draw.
+
+Note that "10 A max" printed on the M35A wrap is a **discharge** rating. It says nothing
+about charge current, and the two must never be conflated.
+
+**Consequence:** safe charge current becomes a **hardware** requirement, not merely a
+firmware constant — see D5.
 
 ---
 
-## D5 — Not decided yet
+## D5 — The charge-current ceiling is enforced in hardware by the ILIM resistor
 
-Open items that will become decisions once Stage A completes:
+**Source:** TI BQ25895 datasheet SLUSC88C (March 2015, revised October 2022), REG00
+Table 8-8, REG04, and §9.3.7 device operating modes.
 
-- **CH224K VDD supply.** The part's VDD is specified around 3.3 V. Whether it is fed from
-  VBUS through a series resistor relying on an internal regulator, or needs a discrete
-  LDO, must be read off the datasheet rather than inferred from trigger-board schematics.
-- **BQ25895 I2C watchdog.** The charger resets its registers to defaults if the host does
-  not service its watchdog. The firmware must either kick it or disable it, and the
-  *default* register state must be independently verified as safe for this cell, because
-  that is the state the board sits in whenever the ESP32 is absent, held in reset, or
-  crashed.
-- **Board-level 1S protection.** §15 requires a dedicated protection stage unless the
-  BQ25895 plus cell protection covers everything. With a removable, possibly unprotected
-  user cell, the working assumption is that a discrete protection IC **is** required.
+### The failure this prevents
+
+Three register facts combine badly:
+
+1. **`ICHG` (REG04) powers up at 2048 mA** — already above the M35A's 1.7 A limit — and is
+   **reset by the watchdog**.
+2. **On power-on reset the device starts in default mode with the watchdog already
+   expired, and keeps charging the battery** on a 12-hour safety timer. It does not wait
+   for a host.
+3. When the watchdog expires, all registers return to defaults **except `IINLIM`,
+   `VINDPM`, `VINDPM_OS`, `BATFET_RST_EN`, `BATFET_DLY` and `BATFET_DIS`.**
+
+Fact 3 is the trap. `IINLIM` **survives** watchdog expiry while `ICHG` **does not**. So:
+
+> Firmware raises the input current limit for fast charging, then the ESP32 crashes, is
+> held in reset, or is simply pulled out of its socket. The watchdog expires. `ICHG` snaps
+> back to 2048 mA while the raised `IINLIM` persists. The cell is charged at 2048 mA
+> against a 1700 mA limit, indefinitely, with no host present to correct it.
+
+This is not a corner case for this product. **The ESP32 is a removable module by design.**
+A board sitting on USB-C with no module installed is a supported configuration, and in that
+configuration nothing ever writes a register.
+
+### The fix
+
+Size the **ILIM pin resistor** so the input current limit alone cannot push charge current
+past the ceiling with no system load.
+
+- `IINMAX = KILIM / RILIM`, with `KILIM = 390` maximum (datasheet §7.5, p4/p26).
+- The actual input current limit is the **lower** of the ILIM pin setting and `IINLIM`.
+- **`EN_ILIM` (REG00 bit 6) defaults to `1` = Enable, and is reset by the watchdog.**
+
+That last point is what makes this work: firmware may clear `EN_ILIM` to lift the clamp
+during normal supervised operation, but **any watchdog expiry restores it**. The failure
+mode reverts to the hardware-safe state instead of away from it.
+
+### Sizing
+
+Worst case is the constant-current phase at the lowest cell voltage, taken as 3.0 V, with
+zero system load — which is exactly the host-less case the clamp exists for.
+
+| | |
+|---|---|
+| Target charge ceiling, no host | 1.5 A |
+| Battery power | 1.5 A × 3.0 V = 4.5 W |
+| Input power at ~90% efficiency | 5.0 W |
+| Input current at 9 V | 0.556 A |
+| `RILIM` = 390 / 0.556 | 701 Ω → **use 680 Ω** (E24) |
+| Resulting `IINMAX` | 390 / 680 = **0.574 A** |
+| Resulting charge current at 3.0 V | **≈ 1.55 A** ✅ under 1.7 A |
+| Resulting charge current at 3.7 V | ≈ 1.26 A |
+
+0.574 A clears the datasheet's **500 mA minimum settable ILIM current**, so the pin
+remains in its valid operating range.
+
+**To be confirmed during schematic work:** the 90% efficiency assumption against the
+datasheet's efficiency curves at 9 V input, and the exact `KILIM` tolerance band — 390 is
+quoted as a maximum, so the achieved limit will sit at or below the figures above. Erring
+low is the safe direction here, and reduces charge current rather than raising it.
+
+---
+
+## D6 — Still open
+
+Items that will become decisions during Stage B.
+
+- **CH224K VDD supply.** The part's VDD sits around 3.3 V. Whether it is fed from VBUS
+  through a series resistor relying on an internal regulator, or needs a discrete LDO,
+  must be read off the WCH datasheet rather than inferred from the many trigger-board
+  schematics floating around.
+- **Board-level 1S protection.** Spec §15 requires a dedicated protection stage unless the
+  BQ25895 plus the cell's own protection covers everything. The installed M35A is a bare
+  cell with no PCB, and the holder accepts any 18650 the user fits — so the working
+  assumption is that a discrete protection IC **is** required. This is the largest
+  remaining open question in the power path.
+- **NTC network values.** The BQ25895 `TS` thresholds must be sized so the charge window
+  matches the M35A's permitted charging temperature range, not the charger's defaults.
+- **TPS63070 feedback divider and inductor.** Both follow from TI's reference layout once
+  the 5 V rail's transient budget is fixed.
+
+*(The BQ25895 watchdog and default-register question that sat here has been resolved — see
+D5.)*

@@ -28,7 +28,7 @@ input and the BQ25895 charger/power-path, both against vendor reference designs.
 | KiCad | ✅ 10.0.6 installed at `%LOCALAPPDATA%\Programs\KiCad\10.0` |
 | `kicad-cli` | ✅ `%LOCALAPPDATA%\Programs\KiCad\10.0\bin\kicad-cli.exe` |
 | Host board | YD-ESP32-S3 Core Board N8R8, **rev V1.3 (2022)**, ×5 |
-| Target cell | Molicel 3000 mAh 18650, exact model unconfirmed |
+| Target cell | **Molicel INR-18650-M35A**, 3.6 V / 3.35 Ah — max charge **1.7 A** |
 
 ## Blocking gate items
 
@@ -44,13 +44,14 @@ between the vendor's "counterfeit V1.2" and "authentic V1.4" and is not itself d
 The user has calipers and has agreed. **Not blocking schematic work; blocking before layout
 is committed.**
 
-### G2 — Cell identity does not match the spec's assumption ⛔ blocks charge configuration
+### G2 — Cell confirmed as Molicel INR-18650-M35A ✅ resolved
 
-The cell marking matches neither the P30B nor the M35A cleanly, and the two differ by 5× in
-permitted charge current. Resolved for now by building the hardware for 2.0 A and defaulting
-the firmware to 1.0 A — see [D4](DECISIONS.md#d4--hardware-built-for-20a-firmware-defaults-to-10a-until-the-cell-is-identified).
+Cell is a **Molicel INR-18650-M35A, 3.6 V / 3.35 Ah**, whose **maximum charge current is
+1.7 A** — the spec's 2.0 A target would have exceeded it by 18% on every cycle. Charge
+policy set in [D4](DECISIONS.md#d4--cell-is-a-molicel-inr-18650-m35a-the-specs-20a-target-is-unsafe-for-it):
+1.0 A default, 1.5 A maximum, 1.7 A hard ceiling, 2.0 A of copper.
 
-**Does not block layout.** Blocks the firmware default constant and the release gate.
+This produced a **new hardware requirement** — see G4.
 
 ### G3 — GPIO assignment ✅ resolved
 
@@ -58,16 +59,30 @@ Proposed map in [MECHANICAL.md](MECHANICAL.md#proposed-carrier-gpio-assignment).
 signals land on J1, leaving J2 entirely free for RuView. I2C on the ESP32-S3 default pair
 (GPIO8/9). No strapping, PSRAM, USB, UART or RGB pins used.
 
+### G4 — ILIM resistor is a safety-critical component ⛔ must be in the schematic
+
+The BQ25895 powers up charging at **2048 mA** with no host present, and its watchdog
+restores that default while leaving a host-raised `IINLIM` in place. Because the ESP32 is a
+**removable** module, "no host present" is a supported configuration, not a fault.
+
+`RILIM = 680 Ω` on the ILIM pin is the hardware clamp that makes this safe, and it works
+because `EN_ILIM` defaults to Enable and is restored by the watchdog. Full derivation in
+[D5](DECISIONS.md#d5--the-charge-current-ceiling-is-enforced-in-hardware-by-the-ilim-resistor).
+
+**Treat this resistor as safety-critical.** It must not be value-engineered, substituted, or
+marked DNP, and the BOM must say so.
+
 ## Open engineering questions
 
-Carried from [DECISIONS.md](DECISIONS.md#d5---not-decided-yet):
+Carried from [DECISIONS.md](DECISIONS.md#d6--still-open):
 
 - CH224K VDD supply topology — resistor from VBUS or a discrete LDO?
-- BQ25895 I2C watchdog behaviour, and whether its **default** register state is safe for
-  this cell with no host running. That is the state the board sits in whenever the ESP32
-  is absent, held in reset, or crashed.
-- Whether a discrete 1S protection IC is required. Working assumption: **yes**, because
-  the cell is user-removable and may be unprotected.
+- Whether a discrete 1S protection IC is required. Working assumption: **yes** — the
+  installed M35A is a bare cell with no protection PCB, and the holder accepts whatever
+  18650 the user fits.
+- NTC network values, sized to the M35A's permitted charging temperature window rather
+  than the charger's defaults.
+- TPS63070 feedback divider and inductor, from TI's reference layout.
 
 ## Quality gate before order
 
@@ -80,3 +95,4 @@ there and will be tracked here once Stage B begins.
 |---|---|
 | 2026-08-31 | Project created. Board identity corrected to YD-ESP32-S3 V1.3 (D1). Architecture trimmed: CH224K replaces STUSB4500 (D2), PCA9633 dropped (D3). KiCad 10.0.6 installed. Four critical actives validated with exact MPNs; USB-C, sockets and holder selected. Board size estimated ~90 × 60 mm. |
 | 2026-08-31 | Vendor drawing read: YD board is 27.94 × 57.15 mm, rows 25.40 mm, antenna overhangs pin-1 edge by 6.24 mm; all 44 pins confirmed identical to official DevKitC-1. GPIO map proposed on J1 only (G3 closed). Cell marking found to match neither P30B nor M35A — charge policy split to 2.0 A hardware / 1.0 A firmware default (D4). |
+| 2026-08-31 | Cell confirmed as Molicel INR-18650-M35A: max charge 1.7 A, so the spec's 2.0 A target was unsafe (D4). Found that BQ25895 `ICHG` defaults to 2048 mA and is watchdog-reset while `IINLIM` is not — a removable ESP32 leaves the cell charging over its limit. Fixed in hardware with a 680 Ohm ILIM resistor, relying on `EN_ILIM` defaulting to Enable (D5). Samsung 35E evaluated, no change warranted. |

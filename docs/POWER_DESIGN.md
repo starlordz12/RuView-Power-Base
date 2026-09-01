@@ -24,8 +24,26 @@ series resistor** to the VBUS net.
 - VDD operating range: **3.0–3.6 V** (absolute max 3.6 V)
 - VBUS input range: **4–22 V**
 
-⬜ **Exact series resistor values** must be read off the manual's reference schematic
-figures (§6.1–6.3) rather than inferred. This is the one open value in this section.
+**Values from the manual's reference schematic §6.1 (confirmed):**
+
+| Net | Component |
+|---|---|
+| VBUS → VDD | **1 kΩ series**, plus **1 µF** VDD to GND |
+| VBUS → VBUS pin | **10 kΩ series** |
+| CFG1 → GND | **6.8 kΩ** (selects 9 V) |
+| PG | **10 kΩ** pull-up (open-drain output) |
+
+⚠ **Size the VDD series resistor at 1206, not 0603.** VDD is a **shunt** regulator holding
+3.3 V and sinking the excess, so the series resistor carries `(VBUS − 3.3) / 1 kΩ`:
+
+| VBUS | Current into shunt | Power in R |
+|---|---|---|
+| 9 V (normal) | 5.7 mA | 32 mW ✅ |
+| 20 V (open-CFG1 fault) | 16.7 mA — within the ~20 mA shunt capability | **279 mW** ⚠ |
+
+A 0603 (100 mW) would be destroyed in the fault case and an 0805 (125 mW) is still under.
+A 1206 at 250 mW survives it. Costs nothing and removes a burn hazard from a fault we
+already know is reachable.
 
 ### Voltage selection ✅ resolved — and safety-relevant
 
@@ -129,7 +147,7 @@ ESP32's 5 V pin.** For fixed versions the FB pin connects directly to VOUT.
 
 | Item | Value |
 |---|---|
-| **L** | **1.5 µH** — Coilcraft `XFL4020-152ME` |
+| **L** | **1.5 µH** — Coilcraft `XFL4020-152MEC` |
 | CIN | 2 × 10 µF / 25 V / X7S / 0805 |
 | COUT | 3 × 22 µF / 16 V / X6S / 0805 |
 | VIN local | 10 µF / 25 V / X5R / 0603 |
@@ -138,89 +156,50 @@ ESP32's 5 V pin.** For fixed versions the FB pin connects directly to VOUT.
 
 ---
 
-## 4. Battery protection — BQ29700 + external FETs
+## 4. Battery protection — AP9214L (integrated protector + FETs)
 
-### Protector ✅ selected
+**Diodes Incorporated `AP9214L`**, U-DFN2535-6, < 0.6 mm thick. One package containing a
+1-cell protector and a matched dual common-drain N-FET.
 
-**TI `BQ29700DSE`**, WSON-6, 1.5 × 1.5 × 0.75 mm. Drives two low-side N-FETs in the cell's
-negative path. Factory-programmed thresholds (SLUSBU9 §11.2.1):
+| Parameter | Value |
+|---|---|
+| Integrated RSS(on) | **13.5 mΩ typ**, specified at **VDD = 3.5 V** |
+| Overcharge detect | 3.5–4.5 V, 5 mV steps, ±25 mV |
+| Overdischarge detect | 2.0–3.4 V, 10 mV steps, ±35 mV |
+| **Discharge overcurrent (VDOC)** | **0.05–0.32 V, 10 mV steps, ±15 mV** |
+| Short-circuit detect | 0.45–0.7 V |
+| Charge overcurrent | −0.2 to −0.05 V |
+| Quiescent | 3.0 µA typ normal · 0.1 µA power-down |
+| External components | **R1 220 Ω · R2 1.0 kΩ · C1 100 nF** |
 
-| Protection | Threshold | Delay | Release |
-|---|---|---|---|
-| Overcharge (OVP) | **4.275 V** | 1.2 s | 4.175 V |
-| Over-discharge (UVP) | **2.800 V** | 150 ms | 3.100 V |
-| Charge overcurrent (OCC) | −70 mV | 9 ms | — |
-| Discharge overcurrent (OCD) | **100 mV** | 18 ms | BAT−V⁻ > 1 V |
-| Load short circuit (SCC) | 500 mV | 250 µs | 1 V |
+### Trip point
 
-OVP at 4.275 V sits correctly above the BQ25895's 4.208 V charge target — the protector is
-a genuine second layer, not a nuisance trip. UVP at 2.800 V is a sane floor for the M35A.
-
-Support components per the typical application schematic: **0.1 µF**, **2.2 kΩ**,
-**330 Ω**, and an optional 5 MΩ gate-source resistor.
-
-### ⚠ FET selection — the constraint that rules out the obvious parts
-
-**OCD is sensed as a voltage across the FETs, not by a sense resistor.** The trip current
-is therefore set entirely by the FETs' on-resistance:
+Overcurrent is sensed as a voltage across the FETs, so:
 
 ```text
-I_trip  =  VOCD / (2 × RDS(on))  =  100 mV / (2 × RDS(on))
+I_trip  =  VDOC / RSS(on)  =  100 mV / 13.5 mΩ  ≈  7.4 A
 ```
 
-Our worst-case legitimate discharge, which must **not** trip:
+Against this board's **3.55 A** worst-case transient that is roughly 2× margin, and it sits
+well below the M35A's 10 A discharge rating. Because RSS(on) is characterised at
+**VDD = 3.5 V**, this figure holds at the real 1S operating point rather than at a
+datasheet-convenient gate voltage.
 
-| | |
-|---|---|
-| 5 V rail transient target (spec §22) | 2.0 A → 10 W |
-| Buck-boost efficiency (boost region) | ~88% |
-| Cell voltage, worst case | 3.2 V |
-| **Peak cell current** | **≈ 3.55 A** |
-| Target trip point, ~1.7× margin | **≈ 6 A** |
-| **Required total RDS(on)** | **≤ 16.7 mΩ** → **≤ 8.3 mΩ per FET** |
+### Why discrete FETs were rejected — see [D7](DECISIONS.md#d7--battery-protection-integrated-ap9214l-after-two-wrong-answers)
 
-**This rules out the two parts every reference design reaches for:**
+In a 1S pack the gate drive **is the cell voltage**, 2.5–4.2 V and falling as it depletes.
 
-| Candidate | RDS(on) | Resulting trip | Verdict |
-|---|---|---|---|
-| AO8810 (dual) | 23 mΩ @ VGS 2.5 V | ≈ 2.2 A | ❌ below our own transient |
-| AO8816 (dual) | 23 mΩ @ VGS 2.5 V | ≈ 2.2 A | ❌ same — the whole TSSOP-8 family sits at 18–32 mΩ |
-| FS8205A (dual) | 25 mΩ @ VGS 4.5 V | ≈ 2.0 A | ❌ worse |
-| **CSD16406Q3 ×2 (singles)** | **7.4 mΩ max @ VGS 4.5 V** | **≈ 6.8 A** | ✅ **selected** |
+- Common-drain duals (AO8810, AO8816, FS8205A) sit at 23–25 mΩ at VGS 2.5 V → trip ≈ **2.2 A**,
+  *below this board's own transient*.
+- TI's reference `CSD16406Q3` looks better at 5.9 mΩ — but only at VGS 4.5 V. Its on-resistance
+  goes vertical below ~3.2 V gate (Figure 7) and `Vth` is 1.8 V, so at a depleted cell it is
+  barely enhanced. It is a point-of-load FET, not a 1S protection FET.
 
-### Resolved — and the search was looking in the wrong place
+**RDS(on) quoted at VGS 4.5 V is meaningless for 1S protection.** Only on-resistance at cell
+voltage counts.
 
-Hunting for a low-RDS(on) *common-drain dual* was the wrong approach: no readily available
-TSSOP-8 dual gets near 8 mΩ. **TI's own layout example (SLUSBU9 Figure 32) uses two
-discrete `CSD16406Q3` singles**, and TI's design table (§11.2.1) claims **7 A maximum
-operating discharge current** with exactly this combination and the same 100 mV threshold.
-
-A "common-drain dual" is only two singles sharing a package — the topology is identical.
-Drains tie together, sources go to B− and PACK−, gates to DSG and CHG.
-
-| | |
-|---|---|
-| Part | `CSD16406Q3`, TI NexFET, 25 V, SON 3.3 × 3.3 mm, **ACTIVE** |
-| RDS(on) | 7.4 mΩ max @ VGS 4.5 V · 5.3 mΩ max @ VGS 10 V · 4.2 mΩ typ |
-| Two in series | ≈ 14.8 mΩ → **OCD trips ≈ 6.8 A** |
-| Margin | 1.9× above our 3.55 A transient; well below the cell's 10 A rating |
-
-⬜ **One check remains:** the BQ29700 drives the gate to roughly VBAT, so VGS falls to about
-**3.0 V at a depleted cell** — below the 4.5 V at which that 7.4 mΩ is specified. The
-RDS(on)-vs-VGS curve must be read at 3.0 V and the trip recomputed. Even at a pessimistic
-10 mΩ each the trip is ≈ 5 A, still above our transient, so this is a confirmation rather
-than a risk.
-
-Reading RDS(on) at the headline VGS instead of the actual gate drive is precisely how this
-circuit gets built wrong — and it is why the AO8810 looks acceptable until the arithmetic
-is done.
-
-### Layout requirements (SLUSBU9 §13.1)
-
-1. The connection **between the two FETs must be very short** — extra drop there corrupts
-   the fault sensing that sets the trip point.
-2. FETs need adequate thermal spreading for worst-case power.
-3. The BAT-terminal RC filter (0.1 µF / 2.2 kΩ) sits close to the IC.
+⬜ **Open:** exact orderable variant. Wanted VCU ≈ 4.28–4.35 V, VDL ≈ 2.5–2.8 V, VDOC ≈ 100 mV;
+thresholds are factory-programmed, so the variant must match what is stocked.
 
 ---
 

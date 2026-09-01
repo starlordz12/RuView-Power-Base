@@ -221,50 +221,70 @@ Values in [POWER_DESIGN.md §3](POWER_DESIGN.md#3-5-v-rail--tps630701-changed-fr
 
 ---
 
-## D7 — Battery protection: BQ29700 with low-RDS(on) FETs
+## D7 — Battery protection: integrated AP9214L, after two wrong answers
 
 **Spec said:** §15 — "If the BQ25895 and selected cell protection do not provide all
 required battery protections, add a dedicated 1S protection stage."
 
-**Decision: the protection stage is required.** The installed M35A is a **bare cell with
-no protection PCB**, and the holder accepts whatever 18650 a user fits. The BQ25895
-provides charge-side protection but is not an independent second layer — if the charger
-itself faults, nothing else stands between the cell and the system.
+**The stage is required.** The installed M35A is a **bare cell with no protection PCB**,
+and the holder accepts whatever 18650 a user fits. The BQ25895 protects the charge path
+but is not an independent second layer — if the charger itself faults, nothing stands
+between the cell and the system.
 
-**Selected:** TI **`BQ29700DSE`** (WSON-6, 1.5 × 1.5 mm) driving two low-side N-FETs in
-the cell's negative path. OVP 4.275 V, UVP 2.800 V, OCD 100 mV, SCC 500 mV.
+**Selected: Diodes Incorporated `AP9214L`** — a single U-DFN2535-6 package containing a
+1-cell protector *and* a matched dual common-drain N-FET.
 
-OVP at 4.275 V sits deliberately above the BQ25895's 4.208 V charge target, so the
-protector is a genuine backstop rather than a part that fights the charger.
+| | |
+|---|---|
+| Integrated MOSFET RSS(on) | **13.5 mΩ typ**, characterised at **VDD = 3.5 V** |
+| Overcharge detect | 3.5–4.5 V, 5 mV steps |
+| Overdischarge detect | 2.0–3.4 V, 10 mV steps |
+| **Discharge overcurrent (VDOC)** | **0.05–0.32 V, 10 mV steps** |
+| Short circuit | 0.45–0.7 V |
+| Process | 30 V CMOS (VDD to VM) |
+| Quiescent | 3.0 µA typ normal, 0.1 µA power-down |
+| External parts | R1 220 Ω, R2 1.0 kΩ, C1 100 nF |
 
-### The finding worth carrying forward
+At VDOC = 100 mV the trip is **100 mV / 13.5 mΩ ≈ 7.4 A** — comfortably above this board's
+3.55 A transient and comfortably below the cell's 10 A rating.
 
-**OCD is sensed as a voltage across the FETs**, so the overcurrent trip point is set
-entirely by their on-resistance: `I_trip = 100 mV / (2 × RDS(on))`.
+⬜ **Open:** the exact orderable variant. Wanted: VCU ≈ 4.28–4.35 V, VDL ≈ 2.5–2.8 V,
+VDOC ≈ 100 mV. Thresholds are factory-programmed per part number, so the variant must be
+matched against what is actually stocked.
 
-Working the arithmetic for this board's ~3.55 A peak cell current rules out **both** parts
-that battery-protection reference designs default to:
+---
 
-| Part | RDS(on) | Trip current | |
-|---|---|---|---|
-| AO8810 | 23 mΩ | ≈ 2.2 A | ❌ below our own transient |
-| FS8205A | 25 mΩ | ≈ 2.0 A | ❌ worse |
+### Why this took two wrong answers — the reasoning is worth keeping
 
-Either would nuisance-trip on WiFi transients and look like random brownouts.
+**The governing constraint is gate drive.** In a 1S pack the protector drives the FET gates
+from the cell itself, so **VGS is only 2.5–4.2 V** and falls as the cell depletes. Overcurrent
+is sensed as a voltage across those FETs, so the trip point moves with their on-resistance:
 
-**Requirement: ≤ 8.3 mΩ per FET — measured at VGS = 3.4 V**, which is the BQ29700's actual
-`VOH` gate drive, *not* the 4.5 V or 10 V at which FET datasheets headline their RDS(on).
-Reading the headline figure instead of the curve at the real gate voltage is exactly how
-this circuit gets built wrong.
+```text
+I_trip  =  VDOC / RDS(on,total)
+```
 
-**Resolved:** TI's own layout example (SLUSBU9 Figure 32) pairs the BQ29700 with **two
-discrete `CSD16406Q3` singles**, not a common-drain dual — which is why searching the dual
-category kept coming up short. At **7.4 mΩ max (VGS 4.5 V)** two in series give an OCD trip
-of **≈ 6.8 A**, and TI's own design table claims 7 A with this exact combination. Comfortably
-above our 3.55 A transient, comfortably below the cell's 10 A rating.
+**Wrong answer #1 — the common-drain duals.** AO8810, AO8816 and FS8205A are all ~23–25 mΩ
+at VGS 2.5 V. With a 100 mV threshold that trips near **2.2 A — below this board's own
+3.55 A transient.** They would present as random brownouts during WiFi activity, and would
+be diagnosed as a firmware or power-rail fault, not a protection-FET fault.
 
-⬜ Still to confirm at schematic: RDS(on) read off the curve at **VGS ≈ 3.0 V** (the gate
-drive at a low cell), not the headline 4.5 V figure.
+**Wrong answer #2 — TI's own reference FET.** SLUSBU9's layout example pairs the BQ29700
+with two `CSD16406Q3` singles at 5.9 mΩ (VGS 4.5 V), which looks like a 7 A trip and was
+briefly selected on that basis. **Reading Figure 7 kills it:** on-resistance goes vertical
+below about **3.2 V** of gate drive, and `Vth` is **1.8 V typ**. At a depleted 3.0 V cell
+the part is barely enhanced — resistance runs away, the trip current collapses, and the
+discharge path heats. That FET is built for point-of-load converters with a 4.5–10 V gate;
+in a 1S pack it never sees that.
+
+**The lesson:** for 1S protection, RDS(on) quoted at VGS 4.5 V is meaningless. The only
+figure that matters is on-resistance at **cell voltage**, and a headline number from a
+POL-optimised FET is actively misleading. It is why purpose-built battery-protection FETs
+carry *higher* nominal resistance — that is the price of conducting at 2.5 V.
+
+**Why the AP9214L is the right shape of answer:** its 13.5 mΩ is specified at **VDD = 3.5 V**
+— the actual 1S operating point — and the protector-to-FET matching is the manufacturer's
+problem rather than ours. It replaces three parts with one, in a package under 0.6 mm thick.
 
 ---
 
@@ -346,15 +366,16 @@ large enough to matter, the TS divider gets re-tuned to compensate.
 
 ## D11 — Still open
 
-- ⬜ **CH224K VDD and VBUS series resistor values.** Topology confirmed (internal
-  high-voltage LDO, series R from VBUS, 1 µF decoupling; no external LDO). Exact values
-  must come from the manual's reference schematic figures §6.1–6.3.
+- ⬜ **AP9214L orderable variant.** Thresholds are factory-programmed per part number.
+  Wanted: VCU ≈ 4.28–4.35 V, VDL ≈ 2.5–2.8 V, VDOC ≈ 100 mV. Must be matched against stock.
 - ⬜ **CC1/CC2 ESD array final MPN.** Semtech `µClamp2411ZA` selected on the strength of
   Semtech's own USB Type-C ESD application note; availability and an LCSC-sourceable
   equivalent still to confirm.
-- ⬜ **L1 saturation current** — must be ≥ 4 A, since the charger inductor carries system
-  current as well as charge current.
 - ⬜ **SW2 tactile height variant** — depends on the enclosure, which is not yet designed.
 - ⬜ **Status LED colour suffix** — trivial, at BOM freeze.
 - ⬜ **M35A charging temperature window** versus the assumed 0–45 °C. Confirmation only;
   the assumed window is the conservative one.
+
+**Closed:** CH224K VDD/VBUS series resistors (1 kΩ / 10 kΩ, from the manual's reference
+schematic §6.1, with the VDD resistor sized at 1206 for the 20 V fault case) · L1
+saturation (8 A) · protection FET selection (superseded by the integrated AP9214L, D7).

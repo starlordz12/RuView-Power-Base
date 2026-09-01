@@ -16,16 +16,19 @@ battery holder" placeholders in the released BOM.
 | U2 | 1S charger + NVDC power path | `BQ25895RTW` | Texas Instruments | WQFN-24-1EP 4×4 | ✅ active · stock symbol + thermal-via footprint |
 | U3 | 5 V buck-boost, **fixed 5 V** | `TPS630701RNMR` | Texas Instruments | VQFN-HR-15 (RNM) 2.5×3 | ✅ active · symbol + footprint custom · [D6](DECISIONS.md#d6--tps630701-fixed-5-v-replaces-the-tps63070-adjustable) |
 | U4 | Fuel gauge | `MAX17048G+T10` | Analog Devices | TDFN-8-EP 2×2 | ✅ active · symbol custom |
-| U5 | 1S battery protection | `BQ29700DSE` | Texas Instruments | WSON-6 1.5×1.5 | ✅ active · symbol custom · [D7](DECISIONS.md#d7--battery-protection-bq29700-with-low-rdson-fets) |
+| U5 | 1S battery protection **+ integrated FETs** | `AP9214L` | Diodes Inc | U-DFN2535-6 | ✅ 13.5 mΩ at VDD 3.5 V · symbol custom · [D7](DECISIONS.md#d7--battery-protection-integrated-ap9214l-after-two-wrong-answers) |
 
-Custom-library burden: **symbols** for TPS630701, MAX17048, BQ29700; **one footprint** for
-the TPS630701's VQFN-HR-15. Everything else is KiCad stock.
+Custom-library burden: **symbols** for TPS630701, MAX17048, AP9214L; **footprints** for the
+TPS630701's VQFN-HR-15 and the AP9214L's U-DFN2535-6. Everything else is KiCad stock.
+
+The AP9214L replaces what would have been a protector plus two discrete FETs — see
+[D7](DECISIONS.md#d7--battery-protection-integrated-ap9214l-after-two-wrong-answers) for why
+discrete FETs are the wrong answer at 1S gate drive.
 
 ## Discrete semiconductors
 
 | Ref | Function | MPN | Mfr | Package | Notes |
 |---|---|---|---|---|---|
-| Q1, Q2 | Protection FETs | `CSD16406Q3` | Texas Instruments | SON 3.3×3.3 | ✅ **TI's own reference pairing with the BQ29700.** 7.4 mΩ max @ VGS 4.5 V; two in series → OCD trips ≈ 6.8 A against our 3.55 A transient. |
 | D1 | VBUS TVS | `SMAJ12A` | Littelfuse | DO-214AC (SMA) | ✅ 12 V standoff, 13.3 V breakdown, **19.9 V clamp** |
 | D2 | CC1/CC2 ESD | `µClamp2411ZA` | Semtech | — | 🟡 24 V operating; selected per Semtech's USB Type-C ESD application note for CC pins |
 | D3–D6 | SOC indicator LEDs ×4 | `APT1608SGC` | Kingbright | 0603 | ✅ super-bright green, 568 nm |
@@ -51,12 +54,12 @@ fault would mean abandoning protection of the very part we are trying to protect
 
 | Ref | Function | MPN | Mfr | Value |
 |---|---|---|---|---|
-| L1 | BQ25895 charger inductor | `XFL4020-222ME` | Coilcraft | 2.2 µH |
-| L2 | TPS630701 inductor | `XFL4020-152ME` | Coilcraft | 1.5 µH |
+| L1 | BQ25895 charger inductor | `XFL4020-222MEC` | Coilcraft | 2.2 µH · **8 A** · 23.5 mΩ DCR · LCSC C122469 |
+| L2 | TPS630701 inductor | `XFL4020-152MEC` | Coilcraft | 1.5 µH · TI reference BOM part |
 
 L2 is TI's own reference-BOM part (SLVSC58B Table 2). L1 is the same family for
 consistency. The BQ25895 runs at 1.5 MHz and needs saturation ≥ ICHG + ½·I_ripple, with
-system current sharing the same inductor — ⬜ **verify saturation ≥ 4 A** at schematic.
+system current sharing the same inductor. ✅ **8 A rating confirmed**, double the ≥ 4 A need.
 
 ## Connectors and electromechanical
 
@@ -105,10 +108,10 @@ value-engineered, or marked DNP,** and the BOM must say so explicitly.
 |---|---|
 | LED series resistors ×5 | 680 Ω 0603 → ≈2 mA at 3.3 V (spec §8.5 wants 1–2 mA) |
 | I²C pull-ups ×2 | 4.7 kΩ to 3V3 |
-| BQ29700 support | 0.1 µF, 2.2 kΩ, 330 Ω (SLUSBU9 Figure 25) |
+| AP9214L support | R1 220 Ω · R2 1.0 kΩ · C1 100 nF |
 | BQ25895 decoupling | REGN 4.7 µF/10 V · BAT 10 µF · SYS 20 µF · BTST 0.047 µF |
 | TPS630701 | CIN 2×10 µF/25 V · COUT 3×22 µF/16 V · VIN local 10 µF/25 V |
-| CH224K | VDD 1 µF + ⬜ series R · VBUS ⬜ series R |
+| CH224K | VDD **1 kΩ (1206)** + 1 µF · VBUS **10 kΩ** · PG **10 kΩ** pull-up |
 
 All VBUS-side capacitors are **25 V rated**, which also makes the 20 V CFG1 fault
 non-destructive.
@@ -129,19 +132,24 @@ verified before final routing, and stock moves.
 
 | Item | Blocking |
 |---|---|
-| ⬜ CH224K VDD and VBUS series resistor values | schematic |
+| ⬜ AP9214L orderable variant (VCU ≈ 4.28 V, VDL ≈ 2.5 V, VDOC ≈ 100 mV) vs stock | schematic |
 | ⬜ CC ESD array final MPN and availability | schematic |
-| ⬜ L1 saturation current confirmation | schematic |
 | ⬜ NTC mounting method | layout |
 | ⬜ SW2 tactile height variant | layout / enclosure |
 | ⬜ Status LED colour suffix | BOM freeze |
+
+**Closed this round:** CH224K series resistors (1 kΩ VDD / 10 kΩ VBUS / 6.8 kΩ CFG1, from
+the manual's reference schematic) · L1 saturation (8 A, double the need) · protection FETs
+(superseded by the integrated AP9214L).
 
 ## Sources
 
 - [BQ25895 SLUSC88C — TI](https://www.ti.com/lit/ds/symlink/bq25895.pdf)
 - [TPS63070/1/2 SLVSC58B — TI](https://www.ti.com/lit/ds/symlink/tps63070.pdf)
-- [BQ29700 SLUSBU9 — TI](https://media.digikey.com/pdf/Data%20Sheets/Texas%20Instruments%20PDFs/BQ29700.pdf)
-- [CSD16406Q3 — TI](https://www.ti.com/product/CSD16406Q3)
+- [AP9214L — Diodes Incorporated](https://www.diodes.com/part/view/AP9214L)
+- [XFL4020 series — Coilcraft](https://www.coilcraft.com/getmedia/50632d43-da1b-4cdb-8ab4-3029cab51df3/xfl4020.pdf)
+- [CH224 manual v1F — WCH](https://components101.com/sites/default/files/component_datasheet/WCH_CH224K_ENG.pdf)
+- *(rejected, retained for the reasoning in D7: [BQ29700 SLUSBU9](https://media.digikey.com/pdf/Data%20Sheets/Texas%20Instruments%20PDFs/BQ29700.pdf), [CSD16406Q3](https://www.ti.com/product/CSD16406Q3))*
 - [TPS630701RNMR — Digi-Key](https://www.digikey.com/en/products/detail/texas-instruments/TPS630701RNMR/6175215)
 - [MAX17048 — Analog Devices](https://www.analog.com/en/products/max17048.html)
 - [USB4085 — GCT](https://gct.co/connector/usb4085)
